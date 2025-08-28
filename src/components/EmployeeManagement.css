@@ -1,0 +1,689 @@
+/* 社員管理コンポーネント */
+.employee-management {
+  padding: 20px;
+  max-width: 1200px;
+  margin: 0 auto;
+}
+
+.header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.header h2 {
+  margin: 0;
+  color: #333;
+}
+
+.btn {
+  padding: 8px 16px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  margin: 0 4px;
+  transition: all 0.3s ease;
+}
+
+.btn-primary {
+  background-color: #007bff;
+  color: white;
+}
+
+.btn-secondary {
+  background-color: #6c757d;
+  color: white;
+}
+
+.btn-danger {
+  background-color: #dc3545;
+  color: white;
+}
+
+.btn:hover {
+  opacity: 0.8;
+  transform: translateY(-1px);
+}
+
+.employee-list {
+  overflow-x: auto;
+  margin-bottom: 20px;
+}
+
+.employee-list table {
+  width: 100%;
+  min-width: 600px;
+  border-collapse: collapse;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.employee-list th,
+.employee-list td {
+  padding: 12px;
+  text-align: left;
+  border-bottom: 1px solid #ddd;
+  white-space: nowrap;
+}
+
+.employee-list th {
+  background-color: #f8f9fa;
+  font-weight: 600;
+  position: sticky;
+  top: 0;
+}
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+  padding: 20px;
+  box-sizing: border-box;
+}
+
+.modal {
+  background: white;
+  border-radius: 8px;
+  padding: 0;
+  width: 100%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow-y: auto;
+  margin: auto;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+}
+
+.modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #ddd;
+  background-color: #f8f9fa;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #333;
+  font-size: 18px;
+}
+
+.close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  color: #666;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  transition: background-color 0.3s ease;
+}
+
+.close-btn:hover {
+  background-color: #e9ecef;
+}
+
+.modal form {
+  padding: 20px;
+}
+
+.form-group {
+  margin-bottom: 16px;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 500;
+  color: #333;
+}
+
+.form-group input,
+.form-group select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+  transition: border-color 0.3s ease;
+}
+
+.form-group input:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 20px;
+  padding-top: 20px;
+  border-top: 1px solid #e9ecef;
+}
+
+.form-actions button {
+  padding: 10px 20px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.3s ease;
+}
+
+.form-actions button[type="button"] {
+  background: white;
+  color: #666;
+}
+
+.form-actions button[type="button"]:hover {
+  background-color: #f8f9fa;
+}
+
+/* タブレット対応 */
+@media (max-width: 1024px) {
+  .employee-management {
+    padding: 15px;
+    max-width: 100%;
+    overflow-x: hidden;
+  }
+  
+  .employee-list {
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+  }
+  
+  .employee-list table {
+    font-size: 14px;
+    width: 100%;
+    max-width: 100%;
+  }
+  
+  .employee-list th,
+  .employee-list td {
+    padding: 10px 6px;
+  }
+  
+  .action-buttons {
+    gap: 6px;
+    flex-direction: row;
+    justify-content: space-between;
+    margin-top: 8px;
+    width: 100%;
+  }
+  
+  .action-buttons .btn {
+    padding: 6px 8px;
+    font-size: 12px;
+    flex: 1;
+    max-width: calc(50% - 3px);
+    box-sizing: border-box;
+  }
+  
+  .action-buttons .btn-secondary {
+    background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%) !important;
+    box-shadow: 0 1px 3px rgba(108, 117, 125, 0.2) !important;
+    border: none !important;
+    color: white !important;
+  }
+  
+  .action-buttons .btn-secondary:hover {
+    background: linear-gradient(135deg, #5a6268 0%, #495057 100%) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(108, 117, 125, 0.3) !important;
+  }
+  
+  .action-buttons .btn-danger {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+    box-shadow: 0 1px 3px rgba(220, 53, 69, 0.2) !important;
+    border: none !important;
+    color: white !important;
+  }
+  
+  .action-buttons .btn-danger:hover {
+    background: linear-gradient(135deg, #c82333 0%, #bd2130 100%) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(220, 53, 69, 0.3) !important;
+  }
+}
+
+/* レスポンシブデザイン（モバイル） */
+@media (max-width: 768px) {
+  .employee-management {
+    padding: 10px;
+    width: 100%;
+    max-width: 100vw;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+  
+  .header {
+    flex-direction: column;
+    align-items: stretch;
+    text-align: center;
+    gap: 15px;
+  }
+  
+  .header h2 {
+    margin-bottom: 0;
+    font-size: 22px;
+  }
+  
+  .btn {
+    width: 100%;
+    margin: 0;
+    padding: 16px 24px;
+    font-size: 16px;
+    font-weight: 600;
+    border-radius: 8px;
+  }
+  
+  /* モバイル用カードレイアウト */
+  .employee-list {
+    margin: 0 -5px;
+    padding: 0 10px;
+    width: calc(100% + 10px);
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+  
+  .employee-list table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    margin: 0;
+    padding: 0;
+    min-width: unset;
+  }
+  
+  .employee-list thead {
+    display: none;
+  }
+  
+  .employee-list tbody {
+    display: block;
+    width: 100%;
+  }
+  
+  .employee-list tr {
+    display: block;
+    background: white;
+    border: 1px solid #ddd;
+    border-radius: 12px;
+    margin: 0 0 16px 0;
+    padding: 16px;
+    box-shadow: 0 3px 12px rgba(0,0,0,0.08);
+    width: 100%;
+    max-width: 100%;
+    box-sizing: border-box;
+    position: relative;
+  }
+  
+  .employee-list td {
+    display: block;
+    border: none;
+    padding: 6px 0;
+    position: relative;
+  }
+  
+  .employee-list td[data-label]:before {
+    content: attr(data-label) ":";
+    font-weight: 600;
+    color: #333;
+    display: inline-block;
+    width: 90px;
+    margin-right: 10px;
+  }
+  
+  .employee-list td[data-label="操作"] {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #eee;
+    text-align: center;
+    background: transparent;
+  }
+  
+  .employee-list td[data-label="操作"]:before {
+    display: none;
+  }
+  
+  .action-buttons {
+    display: flex;
+    flex-direction: row;
+    gap: 6px;
+    justify-content: space-between;
+    align-items: center;
+    background: transparent;
+    margin-top: 12px;
+    width: 100%;
+  }
+  
+  .action-buttons .btn {
+    padding: 8px 8px;
+    font-size: 12px;
+    border-radius: 6px;
+    font-weight: 500;
+    flex: 1;
+    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    transition: all 0.2s ease;
+    box-sizing: border-box;
+    max-width: calc(50% - 3px);
+  }
+  
+  .action-buttons .btn-secondary {
+    background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+    color: white;
+    box-shadow: 0 2px 4px rgba(108, 117, 125, 0.2);
+  }
+  
+  .action-buttons .btn-secondary:hover {
+    background: linear-gradient(135deg, #5a6268 0%, #495057 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(108, 117, 125, 0.3);
+  }
+  
+  .action-buttons .btn-danger {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+    color: white;
+    box-shadow: 0 2px 4px rgba(220, 53, 69, 0.2);
+  }
+  
+  .action-buttons .btn-danger:hover {
+    background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+  }
+  
+  /* データがない場合 */
+  .no-data {
+    display: block;
+    background: white;
+    border: 1px solid #e9ecef;
+    border-radius: 12px;
+    margin: 0;
+    padding: 40px 20px !important;
+    text-align: center;
+    color: #6c757d;
+    font-style: italic;
+  }
+  
+  .modal-overlay {
+    padding: 20px 15px;
+    align-items: flex-start;
+    padding-top: 40px;
+  }
+  
+  .modal {
+    max-height: calc(100vh - 80px);
+    width: 100%;
+    max-width: none;
+    margin: 0;
+  }
+  
+  .modal-header {
+    padding: 20px 20px 15px;
+  }
+  
+  .modal-header h3 {
+    font-size: 18px;
+  }
+  
+  .close-btn {
+    font-size: 24px;
+    width: 32px;
+    height: 32px;
+  }
+  
+  .modal form {
+    padding: 0 20px 25px;
+  }
+  
+  .form-group {
+    margin-bottom: 20px;
+  }
+  
+  .form-group label {
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+  
+  .form-group input,
+  .form-group select {
+    padding: 14px 16px;
+    font-size: 16px;
+    border-radius: 8px;
+  }
+  
+  .form-actions {
+    flex-direction: column;
+    gap: 12px;
+    margin-top: 30px;
+  }
+  
+  /* 編集・削除ボタンは横並び */
+  .employee-list .action-buttons {
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 6px !important;
+    justify-content: space-between !important;
+    margin-top: 12px !important;
+    width: 100% !important;
+  }
+  
+  .employee-list .action-buttons .btn {
+    flex: 1 !important;
+    max-width: calc(50% - 3px) !important;
+    margin: 0 !important;
+    box-sizing: border-box !important;
+  }
+  
+  .form-actions button {
+    width: 100%;
+    padding: 16px;
+    font-size: 16px;
+    font-weight: 600;
+  }
+}
+
+@media (max-width: 480px) {
+  .employee-management {
+    padding: 8px 5px;
+  }
+  
+  .header h2 {
+    font-size: 20px;
+  }
+  
+  .btn {
+    font-size: 15px;
+    padding: 14px 20px;
+  }
+  
+  .employee-list {
+    margin: 0 -2px;
+    padding: 0 8px;
+    width: calc(100% + 4px);
+  }
+  
+  .employee-list tr {
+    margin-bottom: 12px;
+    padding: 14px;
+    border-radius: 10px;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  
+  .employee-list td {
+    padding: 6px 0;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+  }
+  
+  .employee-list td[data-label]:before {
+    width: 70px;
+    font-size: 13px;
+    min-width: 70px;
+    flex-shrink: 0;
+  }
+  
+  .employee-list td[data-label="操作"] {
+    margin-top: 12px;
+    padding-top: 12px;
+  }
+  
+  .action-buttons {
+    gap: 4px;
+    flex-direction: row;
+    justify-content: space-between;
+    margin-top: 10px;
+    width: 100%;
+  }
+  
+  .action-buttons .btn {
+    padding: 6px 6px;
+    font-size: 11px;
+    flex: 1;
+    max-width: calc(50% - 2px);
+    border-radius: 5px;
+    background: none !important;
+    box-shadow: none !important;
+    box-sizing: border-box;
+  }
+  
+  .action-buttons .btn-secondary {
+    background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%) !important;
+    box-shadow: 0 1px 3px rgba(108, 117, 125, 0.2) !important;
+  }
+  
+  .action-buttons .btn-secondary:hover {
+    background: linear-gradient(135deg, #5a6268 0%, #495057 100%) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(108, 117, 125, 0.3) !important;
+  }
+  
+  .action-buttons .btn-danger {
+    background: linear-gradient(135deg, #dc3545 0%, #c82333 100%) !important;
+    box-shadow: 0 1px 3px rgba(220, 53, 69, 0.2) !important;
+  }
+  
+  .action-buttons .btn-danger:hover {
+    background: linear-gradient(135deg, #c82333 0%, #bd2130 100%) !important;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 6px rgba(220, 53, 69, 0.3) !important;
+  }
+  
+  .modal-overlay {
+    padding: 15px 10px;
+    padding-top: 30px;
+  }
+  
+  .modal-header {
+    padding: 15px 15px 12px;
+  }
+  
+  .modal-header h3 {
+    font-size: 17px;
+  }
+  
+  .close-btn {
+    font-size: 22px;
+    width: 30px;
+    height: 30px;
+  }
+  
+  .modal form {
+    padding: 0 15px 20px;
+  }
+  
+  .form-group input,
+  .form-group select {
+    padding: 12px 14px;
+    font-size: 15px;
+  }
+  
+  .form-actions button {
+    padding: 14px;
+    font-size: 15px;
+  }
+}
+
+/* データがない場合のスタイル */
+.no-data {
+  text-align: center;
+  color: #6c757d;
+  font-style: italic;
+  padding: 20px !important;
+}
+
+/* テーブルの操作ボタン用スタイル */
+.action-buttons {
+  display: flex;
+  gap: 8px;
+  flex-wrap: nowrap;
+  justify-content: flex-start;
+  flex-direction: row;
+  align-items: center;
+}
+
+.action-buttons .btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  transition: all 0.2s ease;
+  cursor: pointer;
+  font-family: inherit;
+}
+
+/* デスクトップ用ボタンスタイル */
+.action-buttons .btn-secondary {
+  background: linear-gradient(135deg, #6c757d 0%, #5a6268 100%);
+  border: none;
+  color: white;
+  box-shadow: 0 2px 4px rgba(108, 117, 125, 0.2);
+}
+
+.action-buttons .btn-secondary:hover {
+  background: linear-gradient(135deg, #5a6268 0%, #495057 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(108, 117, 125, 0.3);
+}
+
+.action-buttons .btn-danger {
+  background: linear-gradient(135deg, #dc3545 0%, #c82333 100%);
+  border: none;
+  color: white;
+  box-shadow: 0 2px 4px rgba(220, 53, 69, 0.2);
+}
+
+.action-buttons .btn-danger:hover {
+  background: linear-gradient(135deg, #c82333 0%, #bd2130 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(220, 53, 69, 0.3);
+}

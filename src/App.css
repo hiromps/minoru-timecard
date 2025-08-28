@@ -1,0 +1,107 @@
+/* アプリ全体のスタイル */
+.App {
+  min-height: 100vh;
+  background-color: #ffffff;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+}
+
+/* h1要素のスタイル調整 */
+h1 {
+  display: block;
+  font-size: 1.2em;
+  margin-block-start: 0.4em;
+  margin-block-end: 0.4em;
+  margin-inline-start: 0px;
+  margin-inline-end: 0px;
+  font-weight: bold;
+  unicode-bidi: isolate;
+}
+
+/* ヘッダーのスタイル */
+.app-header {
+  background: linear-gradient(135deg, #4a90e2, #357abd);
+  color: white;
+  padding: 0.8rem 0;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.header-container {
+  width: 100%;
+  text-align: center;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.system-title {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: white;
+  text-align: center;
+  letter-spacing: 0.5px;
+}
+
+/* メインコンテンツエリア */
+.app-main {
+  background-color: #ffffff;
+  min-height: calc(100vh - 80px);
+  padding: 20px 0;
+}
+
+/* モバイル対応 */
+@media (max-width: 768px) {
+  .app-header {
+    padding: 0.3rem 0;
+  }
+  
+  .system-title {
+    font-size: 0.75rem;
+    font-weight: 600;
+    letter-spacing: 0.1px;
+    white-space: nowrap;
+  }
+  
+  .app-main {
+    min-height: calc(100vh - 45px);
+    padding: 15px 0;
+  }
+  
+  /* モバイル版でのh1サイズ調整 */
+  h1 {
+    font-size: 1rem;
+    margin-block-start: 0.3em;
+    margin-block-end: 0.3em;
+  }
+}
+
+@media (max-width: 480px) {
+  .app-header {
+    padding: 0.25rem 0;
+  }
+  
+  .system-title {
+    font-size: 0.65rem;
+    font-weight: 600;
+    letter-spacing: 0px;
+    white-space: nowrap;
+  }
+  
+  .app-main {
+    min-height: calc(100vh - 35px);
+    padding: 10px 0;
+  }
+  
+  /* スマートフォン版でのh1サイズ調整 */
+  h1 {
+    font-size: 0.9rem;
+    margin-block-start: 0.2em;
+    margin-block-end: 0.2em;
+  }
+}

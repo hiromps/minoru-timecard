@@ -1,0 +1,237 @@
+import { Request, Response } from 'express';
+import { db } from '../database/database';
+import { TimeRecord } from '../models/TimeRecord';
+
+// ステータス判定ロジック
+const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStartTime: string): string => {
+  const clockInHour = clockInTime.getHours();
+  const clockInMinute = clockInTime.getMinutes();
+  const clockInTotalMinutes = clockInHour * 60 + clockInMinute;
+  
+  // 9時以内は通常扱い
+  if (clockInTotalMinutes <= 9 * 60) {
+    return '通常';
+  }
+  
+  // 個別出勤時間との比較
+  const [workHour, workMinute] = workStartTime.split(':').map(Number);
+  const workStartTotalMinutes = workHour * 60 + workMinute;
+  
+  if (clockInTotalMinutes > workStartTotalMinutes) {
+    return '遅刻';
+  }
+  
+  // 退勤時間チェック
+  if (clockOutTime) {
+    const clockOutHour = clockOutTime.getHours();
+    const clockOutMinute = clockOutTime.getMinutes();
+    const clockOutTotalMinutes = clockOutHour * 60 + clockOutMinute;
+    
+    // 17時前の退勤は早退
+    if (clockOutTotalMinutes < 17 * 60) {
+      return '早退';
+    }
+    
+    // 8時間を超える勤務は残業
+    const workMinutes = clockOutTotalMinutes - clockInTotalMinutes;
+    if (workMinutes > 8 * 60) {
+      return '残業';
+    }
+  }
+  
+  return '通常';
+};
+
+// 出勤打刻
+export const clockIn = (req: Request, res: Response) => {
+  const { employee_id } = req.body;
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  
+  // 社員の勤務時間を取得
+  db.get('SELECT work_start_time FROM employees WHERE employee_id = ?', [employee_id], (err, employee: any) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    
+    if (!employee) {
+      res.status(404).json({ error: '社員が見つかりません' });
+      return;
+    }
+    
+    const status = determineStatus(now, null, employee.work_start_time);
+    
+    const sql = `INSERT OR REPLACE INTO time_records (employee_id, record_date, clock_in_time, status) 
+                 VALUES (?, ?, ?, ?)`;
+    
+    db.run(sql, [employee_id, today, now.toISOString(), status], function(err) {
+      if (err) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      res.json({ 
+        message: '出勤打刻が完了しました',
+        status,
+        time: now.toISOString()
+      });
+    });
+  });
+};
+
+// 退勤打刻
+export const clockOut = (req: Request, res: Response) => {
+  const { employee_id } = req.body;
+  const now = new Date();
+  const today = now.toISOString().split('T')[0];
+  
+  // 今日の出勤記録を取得
+  db.get('SELECT * FROM time_records WHERE employee_id = ? AND record_date = ?', [employee_id, today], (err, record: any) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    
+    if (!record || !record.clock_in_time) {
+      res.status(400).json({ error: '出勤記録が見つかりません' });
+      return;
+    }
+    
+    // 日付文字列を確実にDateオブジェクトに変換
+    let clockInTime: Date;
+    if (typeof record.clock_in_time === 'string') {
+      // ISO文字列の場合はそのまま変換
+      clockInTime = new Date(record.clock_in_time);
+      // 変換に失敗した場合の処理
+      if (isNaN(clockInTime.getTime())) {
+        res.status(400).json({ error: '出勤時刻の形式が不正です' });
+        return;
+      }
+    } else {
+      clockInTime = new Date(record.clock_in_time);
+    }
+    
+    // 勤務時間を分単位で計算してから時間に変換（精度向上）
+    const workMinutes = Math.round((now.getTime() - clockInTime.getTime()) / (1000 * 60));
+    const workHours = workMinutes / 60;
+    
+    // デバッグ用ログ（本番環境では削除）
+    console.log(`Employee: ${employee_id}, Clock In: ${clockInTime.toISOString()}, Clock Out: ${now.toISOString()}, Work Minutes: ${workMinutes}, Work Hours: ${workHours}`);
+    
+    // 社員の勤務時間を取得してステータス再判定
+    db.get('SELECT work_start_time FROM employees WHERE employee_id = ?', [employee_id], (err, employee: any) => {
+      if (err) {
+        res.status(500).json({ error: err.message });
+        return;
+      }
+      
+      const status = determineStatus(clockInTime, now, employee.work_start_time);
+      
+      const sql = `UPDATE time_records SET clock_out_time = ?, work_hours = ?, status = ?, updated_at = CURRENT_TIMESTAMP 
+                   WHERE employee_id = ? AND record_date = ?`;
+      
+      db.run(sql, [now.toISOString(), workHours, status, employee_id, today], function(err) {
+        if (err) {
+          res.status(400).json({ error: err.message });
+          return;
+        }
+        res.json({ 
+          message: '退勤打刻が完了しました',
+          status,
+          workHours: Math.round(workHours * 100) / 100,
+          time: now.toISOString()
+        });
+      });
+    });
+  });
+};
+
+// 全打刻記録取得
+export const getTimeRecords = (req: Request, res: Response) => {
+  const sql = `SELECT tr.*, e.name as employee_name 
+               FROM time_records tr 
+               JOIN employees e ON tr.employee_id = e.employee_id 
+               ORDER BY tr.record_date DESC, e.employee_id ASC`;
+  
+  db.all(sql, (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+};
+
+// 特定社員の打刻記録取得
+export const getEmployeeTimeRecords = (req: Request, res: Response) => {
+  const { employee_id } = req.params;
+  const { year, month } = req.query;
+  
+  let sql = `SELECT tr.*, e.name as employee_name 
+             FROM time_records tr 
+             JOIN employees e ON tr.employee_id = e.employee_id 
+             WHERE tr.employee_id = ?`;
+  
+  const params: any[] = [employee_id];
+  
+  // 年月指定がある場合はフィルタリング
+  if (year && month) {
+    sql += ` AND strftime('%Y', tr.record_date) = ? AND strftime('%m', tr.record_date) = ?`;
+    params.push(year.toString(), month.toString().padStart(2, '0'));
+  }
+  
+  sql += ` ORDER BY tr.record_date DESC`;
+  
+  db.all(sql, params, (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+};
+
+// CSV出力用データ取得
+export const getTimeRecordsForExport = (req: Request, res: Response) => {
+  const sql = `SELECT 
+                 e.employee_id as '社員ID',
+                 e.name as '社員名',
+                 e.department as '部署',
+                 tr.record_date as '日付',
+                 tr.clock_in_time as '出勤時刻',
+                 tr.clock_out_time as '退勤時刻',
+                 tr.work_hours as '勤務時間',
+                 tr.status as 'ステータス'
+               FROM time_records tr 
+               JOIN employees e ON tr.employee_id = e.employee_id 
+               ORDER BY tr.record_date DESC, e.employee_id ASC`;
+  
+  db.all(sql, (err, rows) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(rows);
+  });
+};
+
+// 今日の特定社員の記録取得（最新のもの）
+export const getTodayRecord = (req: Request, res: Response) => {
+  const { employee_id } = req.params;
+  const today = new Date().toISOString().split('T')[0];
+  
+  const sql = `SELECT tr.*, e.name as employee_name 
+               FROM time_records tr 
+               JOIN employees e ON tr.employee_id = e.employee_id 
+               WHERE tr.employee_id = ? AND tr.record_date = ?
+               ORDER BY tr.id DESC 
+               LIMIT 1`;
+  
+  db.get(sql, [employee_id, today], (err, row) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    res.json(row || null);
+  });
+};

@@ -1,0 +1,945 @@
+/* タイムカード打刻の基本スタイル */
+.time-clock {
+  padding: 20px;
+  max-width: 900px;
+  margin: 0 auto;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background: #f5f7fa;
+}
+
+.clock-header-compact {
+  text-align: center;
+  margin-bottom: 30px;
+  padding: 25px;
+  background: white;
+  border-radius: 12px;
+  border: 2px solid #e3e6ea;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.clock-header-compact h2 {
+  margin: 0 0 15px 0;
+  color: #2c3e50;
+  font-size: 28px;
+  font-weight: 600;
+}
+
+.current-time-compact {
+  font-size: 20px;
+  color: #34495e;
+  font-weight: 500;
+  background: #ecf0f1;
+  padding: 10px 20px;
+  border-radius: 8px;
+  display: inline-block;
+}
+
+.employee-select-compact {
+  margin-bottom: 30px;
+  padding: 25px;
+  background: white;
+  border-radius: 12px;
+  border: 2px solid #e3e6ea;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+.employee-select-compact label {
+  display: block;
+  margin-bottom: 12px;
+  font-weight: 600;
+  color: #2c3e50;
+  font-size: 16px;
+}
+
+.employee-select-compact select {
+  width: 100%;
+  padding: 15px 20px;
+  border: 2px solid #bdc3c7;
+  border-radius: 10px;
+  font-size: 16px;
+  background: white;
+  color: #2c3e50;
+  transition: all 0.3s ease;
+  outline: none;
+}
+
+.employee-select-compact select:focus {
+  border-color: #3498db;
+  box-shadow: 0 0 0 3px rgba(52, 152, 219, 0.1);
+}
+
+.clock-buttons-top {
+  display: flex;
+  gap: 35px;
+  margin-bottom: 40px;
+  justify-content: center;
+}
+
+.btn {
+  padding: 24px 48px;
+  border: none;
+  border-radius: 16px;
+  cursor: pointer;
+  font-size: 26px;
+  font-weight: 800;
+  transition: all 0.3s ease;
+  box-shadow: 
+    0 8px 20px rgba(0, 0, 0, 0.2),
+    0 4px 8px rgba(0, 0, 0, 0.1),
+    inset 0 2px 4px rgba(255, 255, 255, 0.2);
+  min-width: 160px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  position: relative;
+  border: 3px solid transparent;
+  overflow: hidden;
+}
+
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.1);
+}
+
+.btn-clock-in {
+  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
+  color: white;
+  border: 3px solid #239655;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  font-size: 48px !important;
+  font-weight: 900;
+  padding: 20px 40px;
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-clock-in:hover:not(:disabled) {
+  background: linear-gradient(135deg, #229954 0%, #27ae60 100%);
+  border-color: #1e8449;
+  transform: translateY(-4px);
+  box-shadow: 
+    0 12px 28px rgba(39, 174, 96, 0.4),
+    0 6px 16px rgba(0, 0, 0, 0.15),
+    inset 0 3px 6px rgba(255, 255, 255, 0.3);
+}
+
+.btn-clock-in:active {
+  transform: translateY(-1px);
+  box-shadow: 
+    0 6px 16px rgba(39, 174, 96, 0.3),
+    0 3px 8px rgba(0, 0, 0, 0.1),
+    inset 0 3px 12px rgba(0, 0, 0, 0.1);
+}
+
+.btn-clock-out {
+  background: linear-gradient(135deg, #e74c3c 0%, #ec7063 100%);
+  color: white;
+  border: 3px solid #c0392b;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  font-size: 48px !important;
+  font-weight: 900;
+  padding: 20px 40px;
+  min-height: 100px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.btn-clock-out:hover:not(:disabled) {
+  background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%);
+  border-color: #a93226;
+  transform: translateY(-4px);
+  box-shadow: 
+    0 12px 28px rgba(231, 76, 60, 0.4),
+    0 6px 16px rgba(0, 0, 0, 0.15),
+    inset 0 3px 6px rgba(255, 255, 255, 0.3);
+}
+
+.btn-clock-out:active {
+  transform: translateY(-1px);
+  box-shadow: 
+    0 6px 16px rgba(231, 76, 60, 0.3),
+    0 3px 8px rgba(0, 0, 0, 0.1),
+    inset 0 3px 12px rgba(0, 0, 0, 0.1);
+}
+
+.employee-calendar-compact {
+  background: linear-gradient(135deg, #ffffff 0%, #f0f2f5 100%);
+  border-radius: 16px;
+  border: 2px solid #e3e6ea;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  flex: 1;
+  margin-top: 20px;
+  position: relative;
+  overflow: visible;
+}
+
+.employee-calendar-compact::before {
+  display: none;
+}
+
+.calendar-toggle {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 25px;
+  cursor: pointer;
+  background: linear-gradient(135deg, #3498db 0%, #5dade2 100%);
+  border-radius: 12px 12px 0 0;
+  transition: all 0.3s ease;
+  position: relative;
+  z-index: 1;
+}
+
+/* カレンダーが閉じている時の専用スタイル */
+.employee-calendar-compact.collapsed {
+  margin-top: 20px;
+  flex: none;
+  min-height: auto;
+}
+
+.employee-calendar-compact.collapsed .calendar-toggle {
+  border-radius: 16px;
+  margin: 0;
+}
+
+.employee-calendar-compact.collapsed::before {
+  display: none;
+}
+
+/* カレンダーが開いている時のスタイル */
+.employee-calendar-compact:not(.collapsed) {
+  flex: 1;
+  min-height: calc(100vh - 400px);
+}
+
+.calendar-toggle:hover {
+  background: linear-gradient(135deg, #2980b9 0%, #3498db 100%);
+  transform: translateY(-1px);
+  box-shadow: 0 4px 8px rgba(52, 152, 219, 0.3);
+}
+
+/* 閉じた状態でのホバー効果調整 */
+.employee-calendar-compact.collapsed .calendar-toggle:hover {
+  box-shadow: 0 6px 16px rgba(52, 152, 219, 0.4);
+}
+
+.calendar-toggle h3 {
+  margin: 0;
+  color: white;
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: 0.5px;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.toggle-icon {
+  font-size: 18px;
+  color: white;
+  transition: transform 0.3s ease;
+  font-weight: bold;
+}
+
+.toggle-icon.collapsed {
+  transform: rotate(-90deg);
+}
+
+.calendar-header {
+  padding: 15px 25px;
+  margin: 15px 25px 25px;
+  background: linear-gradient(135deg, #3498db 0%, #5dade2 100%);
+  border-radius: 12px;
+  border: 2px solid #2980b9;
+  text-align: center;
+  font-weight: 800;
+  color: white;
+  font-size: 18px;
+  box-shadow: 0 4px 12px rgba(52, 152, 219, 0.3);
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
+  letter-spacing: 0.5px;
+}
+
+.records-list-compact {
+  padding: 20px 25px 25px;
+  max-height: 450px;
+  overflow-y: auto;
+}
+
+.records-list-compact::-webkit-scrollbar {
+  width: 8px;
+}
+
+.records-list-compact::-webkit-scrollbar-track {
+  background: #f1f1f1;
+  border-radius: 10px;
+}
+
+.records-list-compact::-webkit-scrollbar-thumb {
+  background: linear-gradient(180deg, #3498db 0%, #5dade2 100%);
+  border-radius: 10px;
+}
+
+.records-list-compact::-webkit-scrollbar-thumb:hover {
+  background: linear-gradient(180deg, #2980b9 0%, #3498db 100%);
+}
+
+.no-records {
+  text-align: center;
+  color: #95a5a6;
+  font-style: italic;
+  padding: 50px 20px;
+  font-size: 16px;
+}
+
+/* モーダルスタイル */
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(44, 62, 80, 0.6);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal {
+  background: white;
+  border-radius: 16px;
+  padding: 0;
+  width: 90%;
+  max-width: 550px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+  border: 2px solid #e3e6ea;
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 25px;
+  border-bottom: 2px solid #ecf0f1;
+  background-color: #f8f9fa;
+  border-radius: 13px 13px 0 0;
+  margin: -2px -2px 0 -2px;
+}
+
+.modal-header h3 {
+  margin: 0;
+  color: #2c3e50;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 25px;
+  overflow: hidden;
+}
+
+.modal-body p {
+  margin: 12px 0;
+  color: #34495e;
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.modal-actions {
+  display: flex;
+  justify-content: center;
+  gap: 25px;
+  padding: 35px;
+  border-top: 2px solid #ecf0f1;
+  overflow: hidden;
+}
+
+.modal-actions button {
+  padding: 20px 40px;
+  border: 3px solid #bdc3c7;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 24px;
+  font-weight: 800;
+  transition: all 0.3s ease;
+  min-height: 80px;
+  min-width: 120px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
+  writing-mode: horizontal-tb;
+  text-orientation: mixed;
+}
+
+.modal-actions button:first-child {
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  color: #7f8c8d;
+  border-color: #bdc3c7;
+}
+
+.modal-actions button:first-child:hover {
+  background: linear-gradient(135deg, #ecf0f1 0%, #dee2e6 100%);
+  border-color: #95a5a6;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(189, 195, 199, 0.3);
+}
+
+.btn-primary {
+  background: linear-gradient(135deg, #3498db 0%, #5dade2 100%);
+  color: white;
+  border-color: #2980b9;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #2980b9 0%, #3498db 100%);
+  border-color: #21618c;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 16px rgba(52, 152, 219, 0.3);
+}
+
+/* 出勤モーダル専用スタイル */
+.modal-clock-in {
+  border: 3px solid #27ae60;
+  box-shadow: 0 8px 32px rgba(39, 174, 96, 0.3);
+}
+
+.modal-header-clock-in {
+  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%) !important;
+  border-color: #27ae60 !important;
+  color: #155724 !important;
+  border-radius: 13px 13px 0 0 !important;
+  margin: -3px -3px 0 -3px !important;
+}
+
+.modal-header-clock-in h3 {
+  color: #155724 !important;
+  font-weight: 700;
+}
+
+.operation-in {
+  color: #27ae60;
+  font-weight: 800;
+  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+  padding: 4px 12px;
+  border-radius: 20px;
+  margin-left: 8px;
+}
+
+.btn-confirm-in {
+  background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%) !important;
+  border-color: #239655 !important;
+}
+
+.btn-confirm-in:hover {
+  background: linear-gradient(135deg, #229954 0%, #27ae60 100%) !important;
+  border-color: #1e8449 !important;
+  box-shadow: 0 6px 16px rgba(39, 174, 96, 0.4) !important;
+}
+
+/* 退勤モーダル専用スタイル */
+.modal-clock-out {
+  border: 3px solid #e74c3c;
+  box-shadow: 0 8px 32px rgba(231, 76, 60, 0.3);
+}
+
+.modal-header-clock-out {
+  background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%) !important;
+  border-color: #e74c3c !important;
+  color: #721c24 !important;
+  border-radius: 13px 13px 0 0 !important;
+  margin: -3px -3px 0 -3px !important;
+}
+
+.modal-header-clock-out h3 {
+  color: #721c24 !important;
+  font-weight: 700;
+}
+
+.operation-out {
+  color: #e74c3c;
+  font-weight: 800;
+  background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+  padding: 4px 12px;
+  border-radius: 20px;
+  margin-left: 8px;
+}
+
+.btn-confirm-out {
+  background: linear-gradient(135deg, #e74c3c 0%, #ec7063 100%) !important;
+  border-color: #c0392b !important;
+}
+
+.btn-confirm-out:hover {
+  background: linear-gradient(135deg, #c0392b 0%, #e74c3c 100%) !important;
+  border-color: #a93226 !important;
+  box-shadow: 0 6px 16px rgba(231, 76, 60, 0.4) !important;
+}
+
+/* モーダル内のスクロールバーを非表示 */
+.modal::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar,
+.modal-actions::-webkit-scrollbar {
+  display: none;
+}
+
+.modal,
+.modal-body,
+.modal-actions {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+/* 出勤記録アイテムの改善されたスタイル */
+.employee-calendar-compact .record-item-compact {
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border: 2px solid #e8eaed;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 16px;
+  transition: all 0.3s ease;
+  display: block;
+  position: relative;
+  overflow: hidden;
+}
+
+.employee-calendar-compact .record-item-compact:hover {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-color: #adb5bd;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.12);
+  transform: translateY(-2px);
+}
+
+.employee-calendar-compact .record-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 2px solid #ecf0f1;
+}
+
+.employee-calendar-compact .record-date {
+  font-weight: 700;
+  font-size: 15px;
+  color: #2c3e50;
+}
+
+.employee-calendar-compact .record-status {
+  font-weight: 700;
+  font-size: 13px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* ステータス別の色分け（統一されたカラーパレット） */
+.record-status.status-normal,
+.status-badge-today.status-normal,
+.employee-calendar-compact .record-status.status-normal {
+  background: linear-gradient(135deg, #d4edda 0%, #c3e6cb 100%);
+  color: #155724;
+  border: 1px solid #28a745;
+  box-shadow: 0 2px 4px rgba(40, 167, 69, 0.2);
+}
+
+.record-status.status-late,
+.status-badge-today.status-late,
+.employee-calendar-compact .record-status.status-late {
+  background: linear-gradient(135deg, #fff3cd 0%, #ffeeba 100%);
+  color: #856404;
+  border: 1px solid #ffc107;
+  box-shadow: 0 2px 4px rgba(255, 193, 7, 0.2);
+}
+
+.record-status.status-early,
+.status-badge-today.status-early,
+.employee-calendar-compact .record-status.status-early {
+  background: linear-gradient(135deg, #f8d7da 0%, #f5c6cb 100%);
+  color: #721c24;
+  border: 1px solid #e74c3c;
+  box-shadow: 0 2px 4px rgba(231, 76, 60, 0.2);
+}
+
+.record-status.status-overtime,
+.status-badge-today.status-overtime,
+.employee-calendar-compact .record-status.status-overtime {
+  background: linear-gradient(135deg, #cce7ff 0%, #b3d9ff 100%);
+  color: #004085;
+  border: 1px solid #007bff;
+  box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+}
+
+.employee-calendar-compact .record-body {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 20px;
+  background: rgba(255, 255, 255, 0.5);
+  padding: 12px;
+  border-radius: 8px;
+  margin-top: 8px;
+}
+
+.employee-calendar-compact .record-time-group {
+  display: flex;
+  gap: 20px;
+  flex: 1;
+}
+
+.employee-calendar-compact .time-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 70px;
+  padding: 8px;
+  /* 背景色とボーダーを削除 */
+}
+
+.employee-calendar-compact .time-label {
+  font-size: 11px;
+  color: #6c757d;
+  margin-bottom: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.employee-calendar-compact .time-value {
+  font-size: 14px;
+  font-weight: 700;
+  color: #2c3e50;
+  font-family: 'Courier New', monospace;
+}
+
+/* 本日の状況の時刻表示 */
+.time-value-compact {
+  font-size: 14px;
+  font-weight: 700;
+  color: #2c3e50;
+  font-family: 'Courier New', monospace;
+}
+
+.employee-calendar-compact .record-hours {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 90px;
+  padding: 8px 12px;
+  /* 背景色とボーダーを削除 */
+}
+
+.employee-calendar-compact .hours-label {
+  font-size: 10px;
+  color: #27ae60;
+  margin-bottom: 4px;
+  font-weight: 600;
+  text-transform: uppercase;
+}
+
+.employee-calendar-compact .hours-value {
+  font-size: 13px;
+  font-weight: 700;
+  color: #007bff;
+}
+
+/* レスポンシブデザイン */
+@media (max-width: 768px) {
+  .time-clock {
+    padding: 15px;
+  }
+  
+  .clock-buttons-top {
+    flex-direction: row;
+    gap: 20px;
+    margin-bottom: 25px;
+  }
+  
+  .btn {
+    flex: 1;
+    min-width: auto;
+    padding: 28px 24px;
+    font-size: 22px;
+    font-weight: 800;
+    min-height: 80px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    letter-spacing: 1.5px;
+  }
+  
+  .btn-clock-in, .btn-clock-out {
+    font-size: 32px !important;
+    font-weight: 900;
+    min-height: 90px;
+  }
+  
+  .employee-calendar-compact {
+    min-height: calc(100vh - 420px);
+  }
+  
+  .employee-calendar-compact .record-item-compact {
+    padding: 12px;
+  }
+  
+  .employee-calendar-compact .record-body {
+    flex-direction: column;
+    gap: 12px;
+    align-items: stretch;
+  }
+  
+  .employee-calendar-compact .record-time-group {
+    justify-content: space-around;
+  }
+  
+  .employee-calendar-compact .record-hours {
+    align-self: center;
+    min-width: 120px;
+  }
+}
+
+@media (max-width: 480px) {
+  .time-clock {
+    padding: 10px;
+  }
+  
+  .clock-header-compact {
+    padding: 20px;
+  }
+  
+  .clock-header-compact h2 {
+    font-size: 24px;
+  }
+  
+  .current-time-compact {
+    font-size: 18px;
+  }
+  
+  .employee-select-compact {
+    padding: 20px;
+  }
+
+  .clock-buttons-top {
+    gap: 15px;
+    margin-bottom: 20px;
+  }
+  
+  .btn {
+    padding: 32px 20px;
+    font-size: 24px;
+    font-weight: 800;
+    min-height: 90px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    letter-spacing: 1.5px;
+  }
+  
+  .btn-clock-in, .btn-clock-out {
+    font-size: 36px !important;
+    font-weight: 900;
+    min-height: 100px;
+  }
+  
+  .employee-calendar-compact {
+    min-height: calc(100vh - 440px);
+  }
+  
+  .employee-calendar-compact .record-header {
+    flex-direction: column;
+    gap: 6px;
+    align-items: stretch;
+    text-align: center;
+  }
+  
+  .employee-calendar-compact .record-time-group {
+    gap: 15px;
+  }
+  
+  .employee-calendar-compact .time-item {
+    min-width: 60px;
+  }
+}
+
+/* 勤務時間表示のスタイル */
+.work-hours-display {
+  color: #17a2b8;
+  font-weight: bold;
+  font-size: 1.1em;
+  padding: 2px 6px;
+  background-color: #e7f8fc;
+  border-radius: 4px;
+  margin-left: 8px;
+}
+
+.modal-body hr {
+  margin: 15px 0;
+  border: none;
+  border-top: 1px solid #ddd;
+}
+
+/* 本日の状況表示（コンパクト版） */
+.today-status-container {
+  width: 100%;
+  margin: 0 0 25px 0;
+  background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
+  border-radius: 16px;
+  border: 2px solid #e3e6ea;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  overflow: hidden;
+}
+
+.today-status-header {
+  background: linear-gradient(135deg, #17a2b8 0%, #20c997 100%);
+  color: white;
+  padding: 12px 20px;
+  text-align: center;
+}
+
+.today-status-header h3 {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
+}
+
+.today-status-card {
+  padding: 20px;
+}
+
+.status-info-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e8eaed;
+}
+
+.status-date {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.date-label {
+  font-size: 11px;
+  color: #6c757d;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 2px;
+}
+
+.date-value {
+  font-size: 14px;
+  color: #2c3e50;
+  font-weight: 700;
+}
+
+.status-badge-today {
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.time-info-row {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  gap: 15px;
+}
+
+.time-info-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  padding: 8px;
+  background: rgba(255, 255, 255, 0.8);
+  border-radius: 8px;
+  min-width: 70px;
+}
+
+.time-label-compact {
+  font-size: 10px;
+  color: #6c757d;
+  font-weight: 600;
+  text-transform: uppercase;
+  margin-bottom: 4px;
+}
+
+.time-value-compact {
+  font-size: 14px;
+  font-weight: 700;
+  color: #2c3e50;
+  font-family: 'Courier New', monospace;
+}
+
+.time-value-compact.hours {
+  color: #007bff;
+  font-weight: 800;
+}
+
+/* レスポンシブ対応 */
+@media (max-width: 768px) {
+  .today-status-container {
+    width: 100%;
+    margin: 0 0 20px 0;
+  }
+  
+  .time-info-row {
+    gap: 8px;
+  }
+  
+  .time-info-item {
+    min-width: 60px;
+    padding: 6px;
+  }
+  
+  .time-label-compact {
+    font-size: 9px;
+  }
+  
+  .time-value-compact {
+    font-size: 12px;
+  }
+}
+
+@media (max-width: 480px) {
+  .today-status-header {
+    padding: 10px 15px;
+  }
+  
+  .today-status-header h3 {
+    font-size: 14px;
+  }
+  
+  .today-status-card {
+    padding: 15px;
+  }
+  
+  .status-info-row {
+    margin-bottom: 12px;
+    padding-bottom: 10px;
+  }
+  
+  .time-info-row {
+    gap: 6px;
+  }
+  
+  .time-info-item {
+    min-width: 50px;
+    padding: 5px;
+  }
+}
