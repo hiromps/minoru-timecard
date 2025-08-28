@@ -52,9 +52,37 @@ npm start
 - フロントエンド: http://localhost:3000
 - バックエンドAPI: http://localhost:3001
 
+## 🔒 セキュリティ機能（強化版）
+
+### 権限ベースアクセス制御（RBAC）
+- **Super Admin**: 全ての操作（削除も含む）
+- **Admin**: データ管理（削除制限あり）
+- **Viewer**: 閲覧のみ
+
+### アカウント保護
+- **失敗ログイン保護**: 5回失敗で1時間自動ロック
+- **セッション管理**: 8時間で自動期限切れ
+- **監査ログ**: 全操作の自動記録
+
+### データ整合性
+- 1日1人1打刻制限
+- 時間妥当性チェック
+- 勤務時間範囲制限
+
+### IP制限（オプション）
+- `backend/config/allowed-ips.json`で許可IPを設定
+
+## 📋 セキュリティ導入ガイド
+
+詳細な導入手順は以下のドキュメントを参照：
+- `ENHANCED_SECURITY_GUIDE.md` - セキュリティ強化ガイド
+- `SECURITY_DEPLOYMENT_CHECKLIST.md` - 導入チェックリスト
+- `supabase-enhanced-security.sql` - セキュリティ強化SQLスキーマ
+
 ## データベース
 
 SQLiteデータベースファイル (`timecard.db`) は `backend` ディレクトリに自動作成されます。
+Supabase使用時は`supabase-enhanced-security.sql`でセキュリティ強化されたスキーマを適用してください。
 
 ### テーブル構造
 
