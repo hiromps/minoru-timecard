@@ -90,7 +90,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
       <div className="dashboard-header">
         <h2>管理者ダッシュボード</h2>
         <div className="admin-info">
-          <span>こんにちは、{admin?.email || '管理者'}さん</span>
+          <span>こんにちは、管理者さん</span>
           <button onClick={onLogout} className="logout-btn">
             ログアウト
           </button>

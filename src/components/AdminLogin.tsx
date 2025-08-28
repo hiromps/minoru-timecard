@@ -77,7 +77,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
               onChange={(e) => setUsername(e.target.value)}
               required
               disabled={loading}
-              placeholder="minoruaki"
+              placeholder="ユーザー名を入力"
               autoComplete="username"
             />
           </div>
@@ -114,12 +114,6 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
             {loading ? 'ログイン中...' : 'ログイン'}
           </button>
         </form>
-        
-        <div className="login-info">
-          <p>デフォルト認証情報:</p>
-          <p>ユーザー名: <strong>minoruaki</strong></p>
-          <p>パスワード: <strong>akihiro0324</strong></p>
-        </div>
       </div>
     </div>
   );

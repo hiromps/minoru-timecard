@@ -55,12 +55,9 @@ export const initializeDatabase = () => {
     )
   `);
 
-  // デフォルト管理者アカウントの作成
-  const defaultPassword = bcrypt.hashSync('admin123', 10);
-  db.run(`
-    INSERT OR IGNORE INTO admins (username, password_hash, name)
-    VALUES ('admin', ?, '管理者')
-  `, [defaultPassword]);
+  // セキュリティのため、デフォルト管理者アカウントの自動作成は無効化
+  // 管理者アカウントは手動で作成してください
+  console.log('📝 管理者アカウントは手動で作成してください');
 
   console.log('データベーステーブルを初期化しました');
 };
