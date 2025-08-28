@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import EmployeeManagement from './EmployeeManagement';
+import TimeRecordManagement from './TimeRecordManagement';
 import './AdminDashboard.css';
 import { timeRecordService } from '../lib/database';
+import { formatWorkHoursForCSV } from '../utils/timeUtils';
 
 interface AdminDashboardProps {
   admin: any;
@@ -9,7 +11,7 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'export' | 'employees'>('export');
+  const [activeTab, setActiveTab] = useState<'export' | 'employees' | 'timerecords'>('export');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [employeeId, setEmployeeId] = useState('');
@@ -55,7 +57,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
           record.employee_name || '',
           formatTime(record.clock_in_time),
           formatTime(record.clock_out_time),
-          record.work_hours || 0,
+          formatWorkHoursForCSV(record.work_hours || 0),
           record.status
         ].join(',');
       }).join('\n');
@@ -107,6 +109,12 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
           onClick={() => setActiveTab('employees')}
         >
           社員管理
+        </button>
+        <button 
+          className={activeTab === 'timerecords' ? 'tab-btn active' : 'tab-btn'}
+          onClick={() => setActiveTab('timerecords')}
+        >
+          打刻記録管理
         </button>
       </div>
 
@@ -168,6 +176,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
         )}
 
         {activeTab === 'employees' && <EmployeeManagement />}
+        
+        {activeTab === 'timerecords' && <TimeRecordManagement />}
       </div>
     </div>
   );

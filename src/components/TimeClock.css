@@ -1,7 +1,7 @@
-/* タイムカード打刻の基本スタイル */
+/* タイムカード打刻の基本スタイル - モバイルファースト */
 .time-clock {
-  padding: 20px;
-  max-width: 900px;
+  padding: 10px;
+  max-width: 100%;
   margin: 0 auto;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
   min-height: 100vh;
@@ -10,10 +10,18 @@
   background: #f5f7fa;
 }
 
+/* タブレット以上 */
+@media (min-width: 768px) {
+  .time-clock {
+    padding: 20px;
+    max-width: 900px;
+  }
+}
+
 .clock-header-compact {
   text-align: center;
-  margin-bottom: 30px;
-  padding: 25px;
+  margin-bottom: 15px;
+  padding: 15px;
   background: white;
   border-radius: 12px;
   border: 2px solid #e3e6ea;
@@ -21,29 +29,58 @@
 }
 
 .clock-header-compact h2 {
-  margin: 0 0 15px 0;
+  margin: 0 0 10px 0;
   color: #2c3e50;
-  font-size: 28px;
+  font-size: 22px;
   font-weight: 600;
 }
 
 .current-time-compact {
-  font-size: 20px;
-  color: #34495e;
-  font-weight: 500;
+  font-size: 28px;
+  color: #2c3e50;
+  font-weight: 700;
   background: #ecf0f1;
-  padding: 10px 20px;
-  border-radius: 8px;
+  padding: 12px 20px;
+  border-radius: 12px;
   display: inline-block;
+  letter-spacing: 1px;
+  font-family: 'Courier New', monospace;
+}
+
+/* タブレット以上でのヘッダー */
+@media (min-width: 768px) {
+  .clock-header-compact {
+    margin-bottom: 30px;
+    padding: 25px;
+  }
+  
+  .clock-header-compact h2 {
+    margin-bottom: 15px;
+    font-size: 28px;
+  }
+  
+  .current-time-compact {
+    font-size: 36px;
+    padding: 15px 25px;
+    letter-spacing: 2px;
+  }
 }
 
 .employee-select-compact {
-  margin-bottom: 30px;
-  padding: 25px;
+  margin-bottom: 15px;
+  padding: 15px;
   background: white;
   border-radius: 12px;
   border: 2px solid #e3e6ea;
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+}
+
+/* タブレット以上での社員選択 */
+@media (min-width: 768px) {
+  .employee-select-compact {
+    margin-bottom: 30px;
+    padding: 25px;
+  }
 }
 
 .employee-select-compact label {
@@ -73,9 +110,19 @@
 
 .clock-buttons-top {
   display: flex;
-  gap: 35px;
-  margin-bottom: 40px;
+  flex-direction: column;
+  gap: 15px;
+  margin-bottom: 20px;
   justify-content: center;
+}
+
+/* タブレット以上でのボタンコンテナ */
+@media (min-width: 768px) {
+  .clock-buttons-top {
+    flex-direction: row;
+    gap: 35px;
+    margin-bottom: 40px;
+  }
 }
 
 .btn {
@@ -109,15 +156,27 @@
 .btn-clock-in {
   background: linear-gradient(135deg, #27ae60 0%, #2ecc71 100%);
   color: white;
-  border: 3px solid #239655;
+  border: 2px solid #239655;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  font-size: 48px !important;
+  font-size: 28px !important;
   font-weight: 900;
-  padding: 20px 40px;
-  min-height: 100px;
+  padding: 15px 20px;
+  min-height: 70px;
   display: flex;
   align-items: center;
   justify-content: center;
+  width: 100%;
+}
+
+/* タブレット以上での出勤ボタン */
+@media (min-width: 768px) {
+  .btn-clock-in {
+    border: 3px solid #239655;
+    font-size: 48px !important;
+    padding: 20px 40px;
+    min-height: 100px;
+    width: auto;
+  }
 }
 
 .btn-clock-in:hover:not(:disabled) {
@@ -141,15 +200,27 @@
 .btn-clock-out {
   background: linear-gradient(135deg, #e74c3c 0%, #ec7063 100%);
   color: white;
-  border: 3px solid #c0392b;
+  border: 2px solid #c0392b;
   text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
-  font-size: 48px !important;
+  font-size: 28px !important;
   font-weight: 900;
-  padding: 20px 40px;
-  min-height: 100px;
+  padding: 15px 20px;
+  min-height: 70px;
+  width: 100%;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+/* タブレット以上での退勤ボタン */
+@media (min-width: 768px) {
+  .btn-clock-out {
+    border: 3px solid #c0392b;
+    font-size: 48px !important;
+    padding: 20px 40px;
+    min-height: 100px;
+    width: auto;
+  }
 }
 
 .btn-clock-out:hover:not(:disabled) {
@@ -298,7 +369,7 @@
   font-size: 16px;
 }
 
-/* モーダルスタイル */
+/* モーダルスタイル - モバイルファースト */
 .modal-overlay {
   position: fixed;
   top: 0;
@@ -310,21 +381,38 @@
   justify-content: center;
   align-items: center;
   z-index: 1000;
+  padding: 10px;
+  box-sizing: border-box;
 }
 
 .modal {
   background: white;
   border-radius: 16px;
   padding: 0;
-  width: 90%;
-  max-width: 550px;
+  width: 100%;
+  max-width: 400px;
+  max-height: 90vh;
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
   border: 2px solid #e3e6ea;
   overflow: hidden;
+  margin: auto;
+}
+
+/* タブレット以上でのモーダル */
+@media (min-width: 768px) {
+  .modal-overlay {
+    padding: 20px;
+  }
+  
+  .modal {
+    width: 90%;
+    max-width: 550px;
+    max-height: 80vh;
+  }
 }
 
 .modal-header {
-  padding: 25px;
+  padding: 15px;
   border-bottom: 2px solid #ecf0f1;
   background-color: #f8f9fa;
   border-radius: 13px 13px 0 0;
@@ -334,13 +422,28 @@
 .modal-header h3 {
   margin: 0;
   color: #2c3e50;
-  font-size: 20px;
+  font-size: 18px;
   font-weight: 600;
 }
 
 .modal-body {
-  padding: 25px;
+  padding: 15px;
   overflow: hidden;
+}
+
+/* タブレット以上でのモーダルヘッダー・ボディ */
+@media (min-width: 768px) {
+  .modal-header {
+    padding: 25px;
+  }
+  
+  .modal-header h3 {
+    font-size: 20px;
+  }
+  
+  .modal-body {
+    padding: 25px;
+  }
 }
 
 .modal-body p {

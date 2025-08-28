@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './TimeClock.css';
 import { Employee, TimeRecord } from '../lib/supabase';
 import { employeeService, timeRecordService } from '../lib/database';
+import { formatWorkHours } from '../utils/timeUtils';
 
 const TimeClock: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -133,7 +134,7 @@ const TimeClock: React.FC = () => {
   return (
     <div className="time-clock">
       <div className="clock-header-compact">
-        <h2>ミノルタイムカードシステム</h2>
+        <h2>現在時刻</h2>
         <div className="current-time-compact">{currentTime}</div>
       </div>
 
@@ -182,7 +183,7 @@ const TimeClock: React.FC = () => {
               {todayRecord.work_hours > 0 && (
                 <div className="time-info-item">
                   <span className="time-label-compact">⏰ 勤務時間</span>
-                  <span className="time-value-compact hours">{todayRecord.work_hours}h</span>
+                  <span className="time-value-compact hours">{formatWorkHours(todayRecord.work_hours)}</span>
                 </div>
               )}
             </div>
@@ -243,7 +244,7 @@ const TimeClock: React.FC = () => {
                       </div>
                       <div className="record-hours">
                         <div className="hours-label">⏰ 勤務時間</div>
-                        <div className="hours-value">{record.work_hours}h</div>
+                        <div className="hours-value">{formatWorkHours(record.work_hours)}</div>
                       </div>
                     </div>
                   </div>
