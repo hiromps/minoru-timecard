@@ -428,6 +428,10 @@ ALTER TABLE admin_profiles
 ADD CONSTRAINT unique_admin_email 
 UNIQUE (email);
 
+-- 間違い打刻修正用の関数も追加
+-- （enhanced-rls-policies.sqlの内容をここに統合可能）
+
 -- 完了メッセージ
 SELECT 'Enhanced Security Minoru Timecard Database Setup Complete!' as message;
 SELECT 'セキュリティが強化されたタイムカードシステムのデータベース設定が完了しました。' as message_jp;
+SELECT '間違い打刻の修正機能を追加する場合は enhanced-rls-policies.sql も実行してください。' as correction_note;
