@@ -119,15 +119,33 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
                 type="datetime-local"
                 value={formData.clock_in_time}
                 onChange={(e) => setFormData(prev => ({ ...prev, clock_in_time: e.target.value }))}
+                required
               />
+              <small style={{color: '#666', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                ※ 出勤時刻は必須です
+              </small>
             </div>
             <div className="form-group">
               <label>退勤時刻:</label>
-              <input
-                type="datetime-local"
-                value={formData.clock_out_time}
-                onChange={(e) => setFormData(prev => ({ ...prev, clock_out_time: e.target.value }))}
-              />
+              <div className="time-input-group">
+                <input
+                  type="datetime-local"
+                  value={formData.clock_out_time}
+                  onChange={(e) => setFormData(prev => ({ ...prev, clock_out_time: e.target.value }))}
+                  placeholder="未退勤の場合は空のままにしてください"
+                />
+                <button
+                  type="button"
+                  onClick={() => setFormData(prev => ({ ...prev, clock_out_time: '' }))}
+                  className="clear-time-btn"
+                  title="退勤時刻を空にする"
+                >
+                  空にする
+                </button>
+              </div>
+              <small style={{color: '#666', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                ※ 未退勤の場合は「空にする」ボタンで空欄にできます
+              </small>
             </div>
           </div>
 
@@ -278,7 +296,7 @@ const TimeRecordManagement: React.FC = () => {
   };
 
   const formatTime = (dateTimeString: string | null) => {
-    if (!dateTimeString) return '';
+    if (!dateTimeString) return '--:--';
     return new Date(dateTimeString).toLocaleTimeString('ja-JP', {
       hour: '2-digit',
       minute: '2-digit'

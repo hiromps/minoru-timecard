@@ -9,6 +9,8 @@ export const employeeService = {
       return demoEmployeeService.getAll()
     }
 
+    console.log('🔍 Supabaseから社員データを取得中...')
+    
     const { data, error } = await supabase
       .from('employees')
       .select('*')
@@ -16,9 +18,16 @@ export const employeeService = {
     
     if (error) {
       console.error('社員データ取得エラー:', error)
-      throw error
+      console.error('エラーの詳細:', {
+        message: error.message,
+        details: error.details,
+        hint: error.hint,
+        code: error.code
+      })
+      throw new Error(`社員データの取得に失敗しました: ${error.message}`)
     }
     
+    console.log('✅ 社員データ取得成功:', data?.length || 0, '件')
     return data || []
   },
 

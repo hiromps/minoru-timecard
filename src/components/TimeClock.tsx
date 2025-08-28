@@ -26,8 +26,11 @@ const TimeClock: React.FC = () => {
     try {
       const data = await employeeService.getAll();
       setEmployees(data);
+      console.log('社員データを正常に取得しました:', data.length + '件');
     } catch (error) {
       console.error('社員データの取得に失敗しました:', error);
+      alert('社員データの取得に失敗しました。管理者にお問い合わせください。\n' + 
+            'エラー: ' + (error as Error).message);
     }
   };
 

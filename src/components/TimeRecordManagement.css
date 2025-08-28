@@ -646,6 +646,49 @@
   cursor: not-allowed !important;
 }
 
+/* 退勤時刻クリアボタン */
+.clear-time-btn {
+  padding: 8px 12px;
+  font-size: 12px;
+  background: #6c757d;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.2s;
+}
+
+.clear-time-btn:hover {
+  background: #5a6268;
+}
+
+.clear-time-btn:active {
+  background: #495057;
+}
+
+.time-input-group {
+  display: flex;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.time-input-group input {
+  flex: 1;
+}
+
+/* モバイル対応 */
+@media (max-width: 480px) {
+  .clear-time-btn {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  
+  .time-input-group {
+    gap: 6px;
+  }
+}
+
 /* レスポンシブ対応 */
 @media (max-width: 768px) {
   .time-record-management {
