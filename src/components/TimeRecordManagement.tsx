@@ -424,29 +424,29 @@ const TimeRecordManagement: React.FC = () => {
           <tbody>
             {filteredRecords.map(record => (
               <tr key={record.id} className={record.is_manual_entry ? 'manual-entry' : ''}>
-                <td>
+                <td data-label="社員">
                   <div className="employee-info">
                     <span className="employee-id">{record.employee_id}</span>
                     <span className="employee-name">{record.employee_name}</span>
                   </div>
                 </td>
-                <td>{record.record_date}</td>
-                <td>{formatTime(record.clock_in_time)}</td>
-                <td>{formatTime(record.clock_out_time)}</td>
-                <td>{formatWorkHours(record.work_hours)}</td>
-                <td>
+                <td data-label="日付">{record.record_date}</td>
+                <td data-label="出勤">{formatTime(record.clock_in_time)}</td>
+                <td data-label="退勤">{formatTime(record.clock_out_time)}</td>
+                <td data-label="勤務時間">{formatWorkHours(record.work_hours)}</td>
+                <td data-label="ステータス">
                   <span className={`status ${record.status}`}>
                     {record.status}
                   </span>
                 </td>
-                <td>
+                <td data-label="入力種別">
                   {record.is_manual_entry ? (
                     <span className="manual-badge">手動</span>
                   ) : (
                     <span className="auto-badge">自動</span>
                   )}
                 </td>
-                <td>
+                <td data-label="操作">
                   <div className="action-buttons">
                     <button
                       className="correct-btn"

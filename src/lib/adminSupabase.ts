@@ -14,6 +14,8 @@ export interface TimeRecordWithEmployee {
   approved_by?: string;
   created_at: string;
   updated_at: string;
+  correction_reason?: string;
+  correction_history?: any[];
 }
 
 // 全打刻記録を取得（管理者用）
@@ -56,6 +58,10 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
 
     console.log('✅ Employees data fetched:', employeesData?.length || 0);
 
+    // 監査ログを取得
+    const auditLogs = await getAuditLogs();
+    console.log('✅ Audit logs fetched:', auditLogs?.length || 0);
+
     // 社員データをマップに変換
     const employeesMap = new Map();
     if (employeesData) {
@@ -64,21 +70,43 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
       });
     }
 
+    // 監査ログをマップに変換（record_id別に最新の修正理由を取得）
+    const auditLogsMap = new Map();
+    auditLogs?.forEach((log: any) => {
+      const recordKey = log.record_id;
+      if (recordKey && log.new_values?.reason) {
+        if (!auditLogsMap.has(recordKey) || new Date(log.created_at) > new Date(auditLogsMap.get(recordKey).created_at)) {
+          auditLogsMap.set(recordKey, {
+            reason: log.new_values.reason,
+            created_at: log.created_at,
+            action: log.action
+          });
+        }
+      }
+    });
+
     // データ構造を整形
-    const formattedData = timeRecordsData?.map((record: any) => ({
-      id: record.id,
-      employee_id: record.employee_id,
-      employee_name: employeesMap.get(record.employee_id) || `社員${record.employee_id}`,
-      record_date: record.record_date,
-      clock_in_time: record.clock_in_time,
-      clock_out_time: record.clock_out_time,
-      work_hours: record.work_hours || 0,
-      status: record.status,
-      is_manual_entry: false, // 基本的に自動入力として扱う
-      approved_by: record.approved_by,
-      created_at: record.created_at,
-      updated_at: record.updated_at
-    })) || [];
+    const formattedData = timeRecordsData?.map((record: any) => {
+      const recordKey = `${record.employee_id}-${record.record_date}`;
+      const auditInfo = auditLogsMap.get(recordKey);
+      
+      return {
+        id: record.id,
+        employee_id: record.employee_id,
+        employee_name: employeesMap.get(record.employee_id) || `社員${record.employee_id}`,
+        record_date: record.record_date,
+        clock_in_time: record.clock_in_time,
+        clock_out_time: record.clock_out_time,
+        work_hours: record.work_hours || 0,
+        status: record.status,
+        is_manual_entry: false, // 基本的に自動入力として扱う
+        approved_by: record.approved_by,
+        created_at: record.created_at,
+        updated_at: record.updated_at,
+        correction_reason: auditInfo?.reason || null,
+        correction_history: auditInfo ? [auditInfo] : []
+      };
+    }) || [];
 
     console.log('✅ Formatted data ready:', formattedData.length);
     return formattedData;
@@ -412,6 +440,30 @@ export const deleteTimeRecord = async (employee_id: string, record_date: string)
     console.log('✅ Time record deleted successfully from Supabase');
   } catch (error) {
     console.error('❌ Error in deleteTimeRecord:', error);
+    throw error;
+  }
+};
+
+// 監査ログを取得（修正理由を含む）
+export const getAuditLogs = async (): Promise<any[]> => {
+  try {
+    console.log('🔍 Fetching audit logs from Supabase...');
+    
+    const { data, error } = await supabase
+      .from('audit_logs')
+      .select('*')
+      .eq('table_name', 'time_records')
+      .order('created_at', { ascending: false });
+
+    if (error) {
+      console.error('❌ Error fetching audit logs:', error);
+      throw new Error(`監査ログの取得に失敗しました: ${error.message}`);
+    }
+
+    console.log('✅ Audit logs fetched successfully:', data?.length || 0);
+    return data || [];
+  } catch (error) {
+    console.error('❌ Error in getAuditLogs:', error);
     throw error;
   }
 };

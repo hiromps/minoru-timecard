@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import EmployeeManagement from './EmployeeManagement';
 import TimeRecordManagement from './TimeRecordManagement';
 import './AdminDashboard.css';
-import { timeRecordService } from '../lib/database';
+import { getAllTimeRecords } from '../lib/adminSupabase';
 import { formatWorkHoursForCSV } from '../utils/timeUtils';
 
 interface AdminDashboardProps {
@@ -20,8 +20,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
   const handleExport = async () => {
     setLoading(true);
     try {
-      // 全記録を取得してCSV形式で出力
-      const records = await timeRecordService.getAllRecords();
+      // 全記録を取得してCSV形式で出力（修正理由も含む）
+      const records = await getAllTimeRecords();
       
       // フィルタリング
       let filteredRecords = records;
@@ -41,7 +41,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
       }
 
       // CSVデータ作成
-      const csvHeader = '日付,社員ID,社員名,出勤時刻,退勤時刻,勤務時間,ステータス\n';
+      const csvHeader = '日付,社員ID,社員名,出勤時刻,退勤時刻,勤務時間,ステータス,修正理由\n';
       const csvContent = filteredRecords.map(record => {
         const formatTime = (timeString: string | null) => {
           if (!timeString) return '';
@@ -58,7 +58,8 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
           formatTime(record.clock_in_time),
           formatTime(record.clock_out_time),
           formatWorkHoursForCSV(record.work_hours || 0),
-          record.status
+          record.status,
+          `"${record.correction_reason || ''}"` // CSVでカンマが含まれる可能性があるのでクォート
         ].join(',');
       }).join('\n');
 
