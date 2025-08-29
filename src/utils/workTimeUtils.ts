@@ -36,7 +36,7 @@ export const calculateWorkTimeAndStatus = (
 
   // 設定値（分単位）
   const EARLY_ARRIVAL_BUFFER = 60; // 1時間前から出勤可能（8:00から）
-  const LATE_DEPARTURE_BUFFER = 1; // 1分の退勤猶予時間（17:01から残業）
+  const LATE_DEPARTURE_BUFFER = 0; // 猶予時間なし（1分でも超過したら残業）
   const STANDARD_WORK_MINUTES = 8 * 60; // 標準労働時間8時間
 
   // 出勤判定
@@ -70,7 +70,7 @@ export const calculateWorkTimeAndStatus = (
 
   // ステータス判定
   const isEarlyDeparture = clockOut < workEnd;
-  const isOvertimeByTime = clockOut > workEndWithBuffer; // 退勤時刻による残業判定
+  const isOvertimeByTime = clockOut > workEnd; // 退勤時刻による残業判定（1分でも超過したら残業）
   const isOvertimeByHours = actualWorkMinutes > STANDARD_WORK_MINUTES; // 労働時間による残業判定
   const isOvertime = isOvertimeByTime || isOvertimeByHours; // どちらかが該当すれば残業
 

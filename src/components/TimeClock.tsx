@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './TimeClock.css';
 import { Employee, TimeRecord } from '../lib/supabase';
 import { employeeService, timeRecordService } from '../lib/database';
@@ -15,12 +15,44 @@ const TimeClock: React.FC = () => {
   const [currentDate] = useState<Date>(new Date());
   const [todayRecord, setTodayRecord] = useState<TimeRecord | null>(null);
 
+  const fetchEmployeeRecords = useCallback(async (employeeId: string) => {
+    try {
+      const year = currentDate.getFullYear();
+      const month = currentDate.getMonth() + 1;
+      const data = await timeRecordService.getEmployeeRecords(employeeId, year, month);
+      
+      setEmployeeRecords(data);
+    } catch (error) {
+      console.error('社員の打刻記録取得に失敗しました:', error);
+    }
+  }, [currentDate]);
+
+  const fetchTodayRecord = useCallback(async (employeeId: string) => {
+    try {
+      const data = await timeRecordService.getTodayRecord(employeeId);
+      setTodayRecord(data);
+    } catch (error) {
+      console.error('本日の記録取得に失敗しました:', error);
+    }
+  }, []);
+
   useEffect(() => {
     fetchEmployees();
     updateCurrentTime();
     const interval = setInterval(updateCurrentTime, 1000);
     return () => clearInterval(interval);
   }, []);
+
+  // 社員が変更された時にカレンダーが開いている場合は自動で更新
+  useEffect(() => {
+    if (selectedEmployee && showCalendar) {
+      fetchEmployeeRecords(selectedEmployee);
+    }
+    // 社員が変更された時は今日の記録も更新
+    if (selectedEmployee) {
+      fetchTodayRecord(selectedEmployee);
+    }
+  }, [selectedEmployee, showCalendar, fetchEmployeeRecords, fetchTodayRecord]);
 
   const fetchEmployees = async () => {
     try {
@@ -83,27 +115,6 @@ const TimeClock: React.FC = () => {
   };
 
   const selectedEmployeeName = employees.find(emp => emp.employee_id === selectedEmployee)?.name || '';
-
-  const fetchEmployeeRecords = async (employeeId: string) => {
-    try {
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth() + 1;
-      const data = await timeRecordService.getEmployeeRecords(employeeId, year, month);
-      
-      setEmployeeRecords(data);
-    } catch (error) {
-      console.error('社員の打刻記録取得に失敗しました:', error);
-    }
-  };
-
-  const fetchTodayRecord = async (employeeId: string) => {
-    try {
-      const data = await timeRecordService.getTodayRecord(employeeId);
-      setTodayRecord(data);
-    } catch (error) {
-      console.error('本日の記録取得に失敗しました:', error);
-    }
-  };
 
   const handleEmployeeChange = (employeeId: string) => {
     setSelectedEmployee(employeeId);

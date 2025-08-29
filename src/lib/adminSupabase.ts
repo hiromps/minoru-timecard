@@ -19,7 +19,7 @@ export interface TimeRecordWithEmployee {
 // 全打刻記録を取得（管理者用）
 export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => {
   try {
-    console.log('Fetching time records...');
+    console.log('🔍 Fetching time records from Supabase...');
     
     // まず基本的なtime_recordsデータを取得
     const { data: timeRecordsData, error: timeRecordsError } = await supabase
@@ -32,8 +32,6 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
         clock_out_time,
         work_hours,
         status,
-        is_manual_entry,
-        approved_by,
         created_at,
         updated_at
       `)
@@ -41,11 +39,11 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
       .order('employee_id');
 
     if (timeRecordsError) {
-      console.error('Error fetching time records:', timeRecordsError);
+      console.error('❌ Error fetching time records:', timeRecordsError);
       throw new Error(`打刻記録の取得に失敗しました: ${timeRecordsError.message}`);
     }
 
-    console.log('Time records fetched:', timeRecordsData?.length || 0);
+    console.log('✅ Time records fetched from Supabase:', timeRecordsData?.length || 0);
 
     // 社員データを別途取得
     const { data: employeesData, error: employeesError } = await supabase
@@ -53,10 +51,10 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
       .select('employee_id, name');
 
     if (employeesError) {
-      console.warn('Warning: Could not fetch employees data:', employeesError);
+      console.warn('⚠️ Warning: Could not fetch employees data:', employeesError);
     }
 
-    console.log('Employees data fetched:', employeesData?.length || 0);
+    console.log('✅ Employees data fetched:', employeesData?.length || 0);
 
     // 社員データをマップに変換
     const employeesMap = new Map();
@@ -76,16 +74,16 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
       clock_out_time: record.clock_out_time,
       work_hours: record.work_hours || 0,
       status: record.status,
-      is_manual_entry: record.is_manual_entry || false,
+      is_manual_entry: false, // 基本的に自動入力として扱う
       approved_by: record.approved_by,
       created_at: record.created_at,
       updated_at: record.updated_at
     })) || [];
 
-    console.log('Formatted data ready:', formattedData.length);
+    console.log('✅ Formatted data ready:', formattedData.length);
     return formattedData;
   } catch (error) {
-    console.error('Error in getAllTimeRecords:', error);
+    console.error('❌ Error in getAllTimeRecords:', error);
     throw error;
   }
 };
@@ -121,16 +119,30 @@ export const correctTimeRecordByDeleteAndCreate = async (
       throw new Error('既存レコードの削除に失敗しました');
     }
 
-    // 新しいロジックで勤務時間とステータスを計算
+    // 社員の個別勤務時間を取得
+    const { data: employeeData, error: employeeError } = await supabase
+      .from('employees')
+      .select('work_start_time, work_end_time')
+      .eq('employee_id', employee_id)
+      .single();
+
+    if (employeeError) {
+      console.error('Error fetching employee work times:', employeeError);
+      throw new Error('社員の勤務時間情報の取得に失敗しました');
+    }
+
+    // 社員の個別勤務時間を使用してステータスを計算
     const workTimeResult = calculateWorkTimeAndStatus(
       formattedClockIn,
       formattedClockOut,
-      "09:00:00", // 標準労働開始時刻
-      "17:00:00"  // 標準労働終了時刻
+      employeeData.work_start_time + ":00", // HH:MM:SS形式に変換
+      employeeData.work_end_time + ":00"    // HH:MM:SS形式に変換
     );
     
     const work_hours = workTimeResult.actualWorkHours;
     const status = workTimeResult.status;
+
+    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}`);
 
     // 新しいレコードを作成
     const { data: newRecord, error: insertError } = await supabase
@@ -141,8 +153,7 @@ export const correctTimeRecordByDeleteAndCreate = async (
         clock_in_time: formattedClockIn,
         clock_out_time: formattedClockOut,
         work_hours,
-        status,
-        is_manual_entry: true
+        status
       })
       .select()
       .single();
@@ -180,16 +191,30 @@ export const updateTimeRecord = async (
     const formattedClockIn = clock_in_time ? formatToISO(clock_in_time) : null;
     const formattedClockOut = clock_out_time ? formatToISO(clock_out_time) : null;
 
-    // 新しいロジックで勤務時間とステータスを計算
+    // 社員の個別勤務時間を取得
+    const { data: employeeData, error: employeeError } = await supabase
+      .from('employees')
+      .select('work_start_time, work_end_time')
+      .eq('employee_id', employee_id)
+      .single();
+
+    if (employeeError) {
+      console.error('Error fetching employee work times:', employeeError);
+      throw new Error('社員の勤務時間情報の取得に失敗しました');
+    }
+
+    // 社員の個別勤務時間を使用してステータスを計算
     const workTimeResult = calculateWorkTimeAndStatus(
       formattedClockIn,
       formattedClockOut,
-      "09:00:00", // 標準労働開始時刻
-      "17:00:00"  // 標準労働終了時刻
+      employeeData.work_start_time + ":00", // HH:MM:SS形式に変換
+      employeeData.work_end_time + ":00"    // HH:MM:SS形式に変換
     );
     
     const work_hours = workTimeResult.actualWorkHours;
     const status = workTimeResult.status;
+
+    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}`);
 
     const { data: updatedRecord, error } = await supabase
       .from('time_records')
@@ -198,7 +223,6 @@ export const updateTimeRecord = async (
         clock_out_time: formattedClockOut,
         work_hours,
         status,
-        is_manual_entry: true,
         updated_at: new Date().toISOString()
       })
       .eq('employee_id', employee_id)
@@ -278,23 +302,116 @@ const logCorrectionAction = async (
 // 社員一覧を取得
 export const getEmployees = async () => {
   try {
-    console.log('Fetching employees...');
+    console.log('🔍 Fetching employees from Supabase...');
     
     const { data, error } = await supabase
       .from('employees')
       .select('id, employee_id, name')
-      .eq('is_active', true)
       .order('employee_id');
 
     if (error) {
-      console.error('Error fetching employees:', error);
+      console.error('❌ Error fetching employees:', error);
       throw new Error(`社員データの取得に失敗しました: ${error.message}`);
     }
 
-    console.log('Employees fetched successfully:', data?.length || 0);
+    console.log('✅ Employees fetched successfully:', data?.length || 0);
     return data || [];
   } catch (error) {
-    console.error('Error in getEmployees:', error);
+    console.error('❌ Error in getEmployees:', error);
+    throw error;
+  }
+};
+
+// 全打刻記録のステータスを再計算
+export const recalculateAllStatus = async (): Promise<void> => {
+  try {
+    console.log('🔄 Recalculating all time record statuses...');
+    
+    // 全ての打刻記録を取得
+    const { data: records, error: recordsError } = await supabase
+      .from('time_records')
+      .select('id, employee_id, record_date, clock_in_time, clock_out_time');
+
+    if (recordsError) {
+      console.error('Error fetching time records:', recordsError);
+      throw new Error('打刻記録の取得に失敗しました');
+    }
+
+    // 全ての社員の勤務時間を取得
+    const { data: employees, error: employeesError } = await supabase
+      .from('employees')
+      .select('employee_id, work_start_time, work_end_time');
+
+    if (employeesError) {
+      console.error('Error fetching employees:', employeesError);
+      throw new Error('社員データの取得に失敗しました');
+    }
+
+    // 社員データをマップに変換
+    const employeeMap = new Map();
+    employees?.forEach((emp: any) => {
+      employeeMap.set(emp.employee_id, {
+        work_start_time: emp.work_start_time,
+        work_end_time: emp.work_end_time
+      });
+    });
+
+    // 各記録のステータスを再計算
+    let updatedCount = 0;
+    for (const record of records || []) {
+      const employee = employeeMap.get(record.employee_id);
+      if (!employee) continue;
+
+      const workTimeResult = calculateWorkTimeAndStatus(
+        record.clock_in_time,
+        record.clock_out_time,
+        employee.work_start_time + ":00",
+        employee.work_end_time + ":00"
+      );
+
+      // ステータスが変更された場合のみ更新
+      const { error: updateError } = await supabase
+        .from('time_records')
+        .update({
+          status: workTimeResult.status,
+          work_hours: workTimeResult.actualWorkHours,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', record.id);
+
+      if (updateError) {
+        console.error(`Error updating record ${record.id}:`, updateError);
+      } else {
+        updatedCount++;
+      }
+    }
+
+    console.log(`✅ Status recalculation completed. Updated ${updatedCount} records.`);
+  } catch (error) {
+    console.error('❌ Error in recalculateAllStatus:', error);
+    throw error;
+  }
+};
+
+// 打刻記録を削除（Supabase使用）
+export const deleteTimeRecord = async (employee_id: string, record_date: string): Promise<void> => {
+  try {
+    console.log('🗑️ Deleting time record from Supabase:', { employee_id, record_date });
+    
+    const { error } = await supabase
+      .from('time_records')
+      .delete()
+      .eq('employee_id', employee_id)
+      .eq('record_date', record_date);
+
+    if (error) {
+      console.error('❌ Error deleting time record:', error);
+      throw new Error(`打刻記録の削除に失敗しました: ${error.message}`);
+    }
+
+    console.log('✅ Time record deleted successfully from Supabase');
+  } catch (error) {
+    console.error('❌ Error in deleteTimeRecord:', error);
     throw error;
   }
 };

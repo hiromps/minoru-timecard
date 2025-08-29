@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './TimeRecordManagement.css';
-import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, updateTimeRecord, getEmployees, TimeRecordWithEmployee } from '../lib/adminSupabase';
+import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, updateTimeRecord, getEmployees, TimeRecordWithEmployee, deleteTimeRecord, recalculateAllStatus } from '../lib/adminSupabase';
 import { formatWorkHours } from '../utils/timeUtils';
 
 // TimeRecordWithEmployeeを使用するため、ローカル定義は削除
@@ -45,6 +45,25 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
     reason: '',
     action: 'update'
   });
+
+  // モーダル開閉時のbodyスクロール制御
+  useEffect(() => {
+    if (isOpen) {
+      // モーダル開く時：背景のスクロールを無効化
+      document.body.style.overflow = 'hidden';
+      document.body.style.paddingRight = '17px'; // スクロールバー分の調整
+    } else {
+      // モーダル閉じる時：背景のスクロールを有効化
+      document.body.style.overflow = '';
+      document.body.style.paddingRight = '';
+    }
+
+    // クリーンアップ
+    return () => {
+      document.body.style.overflow = '';
+      document.body.style.paddingRight = '';
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (record) {
@@ -207,22 +226,28 @@ const TimeRecordManagement: React.FC = () => {
     record: null as TimeRecordWithEmployee | null
   });
   const [filters, setFilters] = useState({
-    date: new Date().toISOString().split('T')[0],
+    date: '', // 初期値は空にして全ての日付を表示
     employeeId: '',
     showManualOnly: false
   });
 
   // データを取得する関数
   const fetchTimeRecords = async () => {
+    console.log('🎯 fetchTimeRecords called - starting to fetch data...');
     setLoading(true);
     try {
+      console.log('📞 Calling getAllTimeRecords...');
       const records = await getAllTimeRecords();
+      console.log('✅ getAllTimeRecords completed. Records received:', records?.length || 0);
+      console.log('📋 Records data:', records);
       setTimeRecords(records);
+      console.log('✅ State updated with records');
     } catch (error) {
-      console.error('Error fetching time records:', error);
-      alert('打刻記録の取得に失敗しました');
+      console.error('❌ Error fetching time records:', error);
+      alert('打刻記録の取得に失敗しました: ' + (error as Error).message);
     } finally {
       setLoading(false);
+      console.log('🏁 fetchTimeRecords completed');
     }
   };
 
@@ -237,6 +262,7 @@ const TimeRecordManagement: React.FC = () => {
   };
 
   useEffect(() => {
+    console.log('🚀 TimeRecordManagement component mounted - starting initial data fetch');
     fetchTimeRecords();
     fetchEmployees();
   }, []);
@@ -284,16 +310,44 @@ const TimeRecordManagement: React.FC = () => {
     }
   };
 
-  const formatDateTime = (dateTimeString: string | null) => {
-    if (!dateTimeString) return '';
-    return new Date(dateTimeString).toLocaleString('ja-JP', {
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+  // 削除処理
+  const handleDelete = async (employee_id: string, record_date: string) => {
+    if (!window.confirm(`社員ID: ${employee_id} の ${record_date} の打刻記録を削除しますか？\n\nこの操作は取り消せません。`)) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await deleteTimeRecord(employee_id, record_date);
+      alert('打刻記録を削除しました');
+      fetchTimeRecords(); // データを再取得
+    } catch (error: any) {
+      console.error('Error deleting record:', error);
+      alert(`削除に失敗しました: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
   };
+
+  // ステータス再計算処理
+  const handleRecalculateStatus = async () => {
+    if (!window.confirm('全ての打刻記録のステータスを各社員の勤務時間に基づいて再計算します。\n\nこの処理には時間がかかる場合があります。実行しますか？')) {
+      return;
+    }
+
+    setLoading(true);
+    try {
+      await recalculateAllStatus();
+      alert('ステータスの再計算が完了しました');
+      fetchTimeRecords(); // データを再取得
+    } catch (error: any) {
+      console.error('Error recalculating status:', error);
+      alert(`ステータス再計算に失敗しました: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
 
   const formatTime = (dateTimeString: string | null) => {
     if (!dateTimeString) return '--:--';
@@ -303,13 +357,24 @@ const TimeRecordManagement: React.FC = () => {
     });
   };
 
+  console.log('🔄 TimeRecordManagement render - timeRecords length:', timeRecords?.length || 0);
+  console.log('🔄 TimeRecordManagement render - loading:', loading);
+  console.log('🔄 TimeRecordManagement render - filters:', filters);
+  console.log('🔄 TimeRecordManagement render - filteredRecords length:', filteredRecords?.length || 0);
+  console.log('🔄 Sample record for comparison:', timeRecords[0]);
+
   return (
     <div className="time-record-management">
       <div className="management-header">
         <h2>打刻記録管理</h2>
-        <button onClick={fetchTimeRecords} disabled={loading} className="refresh-btn">
-          {loading ? '読込中...' : '更新'}
-        </button>
+        <div className="header-actions">
+          <button onClick={handleRecalculateStatus} disabled={loading} className="recalculate-btn">
+            {loading ? '処理中...' : 'ステータス再計算'}
+          </button>
+          <button onClick={fetchTimeRecords} disabled={loading} className="refresh-btn">
+            {loading ? '読込中...' : '更新'}
+          </button>
+        </div>
       </div>
 
       <div className="filters">
@@ -346,7 +411,7 @@ const TimeRecordManagement: React.FC = () => {
         <table className="records-table">
           <thead>
             <tr>
-              <th>社員ID</th>
+              <th>社員ID / 氏名</th>
               <th>日付</th>
               <th>出勤時刻</th>
               <th>退勤時刻</th>
@@ -359,7 +424,12 @@ const TimeRecordManagement: React.FC = () => {
           <tbody>
             {filteredRecords.map(record => (
               <tr key={record.id} className={record.is_manual_entry ? 'manual-entry' : ''}>
-                <td>{record.employee_id}</td>
+                <td>
+                  <div className="employee-info">
+                    <span className="employee-id">{record.employee_id}</span>
+                    <span className="employee-name">{record.employee_name}</span>
+                  </div>
+                </td>
                 <td>{record.record_date}</td>
                 <td>{formatTime(record.clock_in_time)}</td>
                 <td>{formatTime(record.clock_out_time)}</td>
@@ -377,15 +447,26 @@ const TimeRecordManagement: React.FC = () => {
                   )}
                 </td>
                 <td>
-                  <button
-                    className="correct-btn"
-                    onClick={() => setCorrectionModal({
-                      isOpen: true,
-                      record
-                    })}
-                  >
-                    修正
-                  </button>
+                  <div className="action-buttons">
+                    <button
+                      className="correct-btn"
+                      onClick={() => setCorrectionModal({
+                        isOpen: true,
+                        record
+                      })}
+                      disabled={loading}
+                    >
+                      修正
+                    </button>
+                    <button
+                      className="delete-btn"
+                      onClick={() => handleDelete(record.employee_id, record.record_date)}
+                      disabled={loading}
+                      title="この日の打刻記録を削除"
+                    >
+                      削除
+                    </button>
+                  </div>
                 </td>
               </tr>
             ))}
