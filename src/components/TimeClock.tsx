@@ -118,11 +118,10 @@ const TimeClock: React.FC = () => {
 
   const handleEmployeeChange = (employeeId: string) => {
     setSelectedEmployee(employeeId);
-    if (employeeId) {
-      fetchTodayRecord(employeeId);
-    } else {
+    if (!employeeId) {
       setTodayRecord(null);
     }
+    // fetchTodayRecord will be called by useEffect when selectedEmployee changes
   };
 
   const toggleCalendar = () => {

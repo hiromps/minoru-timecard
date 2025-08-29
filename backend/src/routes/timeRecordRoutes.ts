@@ -1,5 +1,5 @@
 import express from 'express';
-import { clockIn, clockOut, getTimeRecords, getTimeRecordsForExport, getEmployeeTimeRecords, getTodayRecord } from '../controllers/timeRecordController';
+import { clockIn, clockOut, getTimeRecords, getTimeRecordsForExport, getEmployeeTimeRecords, getTodayRecord, deleteTimeRecord as deleteRecord } from '../controllers/timeRecordController';
 import { exportTimeRecords, exportTimeRecordsCSV } from '../controllers/exportController';
 import { getAllTimeRecords, correctTimeRecord, deleteTimeRecord, requireAdmin } from '../controllers/adminTimeRecordController';
 
@@ -18,5 +18,6 @@ router.get('/today/:employee_id', getTodayRecord);
 router.get('/all', requireAdmin, getAllTimeRecords);
 router.post('/admin-correct', requireAdmin, correctTimeRecord);
 router.post('/admin-delete', requireAdmin, deleteTimeRecord);
+router.delete('/delete/:employee_id/:record_date', requireAdmin, deleteRecord);
 
 export default router;

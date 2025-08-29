@@ -18,8 +18,6 @@ export const getAllTimeRecords = (req: Request, res: Response) => {
       tr.clock_out_time,
       tr.work_hours,
       tr.status,
-      tr.is_manual_entry,
-      tr.approved_by,
       tr.created_at,
       tr.updated_at
     FROM time_records tr

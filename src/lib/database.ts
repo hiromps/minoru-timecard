@@ -263,19 +263,21 @@ export const timeRecordService = {
     }
 
     const today = new Date().toISOString().split('T')[0]
+    console.log('📅 本日記録取得中:', { employeeId, today })
     
     const { data, error } = await supabase
       .from('time_records')
       .select('*')
       .eq('employee_id', employeeId)
       .eq('record_date', today)
-      .single()
+      .maybeSingle()
     
-    if (error && error.code !== 'PGRST116') {
-      console.error('本日記録取得エラー:', error)
+    if (error) {
+      console.error('❌ 本日記録取得エラー:', error)
       throw error
     }
     
+    console.log('✅ 本日記録取得結果:', data ? '記録あり' : '記録なし')
     return data || null
   },
 

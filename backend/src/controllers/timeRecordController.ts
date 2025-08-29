@@ -3,20 +3,20 @@ import { db } from '../database/database';
 import { TimeRecord } from '../models/TimeRecord';
 
 // ステータス判定ロジック
-const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStartTime: string): string => {
+const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStartTime: string, workEndTime: string): string => {
   const clockInHour = clockInTime.getHours();
   const clockInMinute = clockInTime.getMinutes();
   const clockInTotalMinutes = clockInHour * 60 + clockInMinute;
   
-  // 9時以内は通常扱い
-  if (clockInTotalMinutes <= 9 * 60) {
-    return '通常';
-  }
-  
   // 個別出勤時間との比較
-  const [workHour, workMinute] = workStartTime.split(':').map(Number);
-  const workStartTotalMinutes = workHour * 60 + workMinute;
+  const [workStartHour, workStartMinute] = workStartTime.split(':').map(Number);
+  const workStartTotalMinutes = workStartHour * 60 + workStartMinute;
   
+  // 個別退勤時間
+  const [workEndHour, workEndMinute] = workEndTime.split(':').map(Number);
+  const workEndTotalMinutes = workEndHour * 60 + workEndMinute;
+  
+  // 出勤時間による遅刻判定
   if (clockInTotalMinutes > workStartTotalMinutes) {
     return '遅刻';
   }
@@ -27,13 +27,14 @@ const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStart
     const clockOutMinute = clockOutTime.getMinutes();
     const clockOutTotalMinutes = clockOutHour * 60 + clockOutMinute;
     
-    // 17時前の退勤は早退
-    if (clockOutTotalMinutes < 17 * 60) {
+    // 個別退勤時間前の退勤は早退
+    if (clockOutTotalMinutes < workEndTotalMinutes) {
       return '早退';
     }
     
-    // 8時間を超える勤務は残業
+    // 勤務時間計算
     const workMinutes = clockOutTotalMinutes - clockInTotalMinutes;
+    // 8時間（480分）を超える勤務は残業
     if (workMinutes > 8 * 60) {
       return '残業';
     }
@@ -46,10 +47,12 @@ const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStart
 export const clockIn = (req: Request, res: Response) => {
   const { employee_id } = req.body;
   const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  // 0時基準で日付を決定（JST）
+  const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const today = jstNow.toISOString().split('T')[0];
   
   // 社員の勤務時間を取得
-  db.get('SELECT work_start_time FROM employees WHERE employee_id = ?', [employee_id], (err, employee: any) => {
+  db.get('SELECT work_start_time, work_end_time FROM employees WHERE employee_id = ?', [employee_id], (err, employee: any) => {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
@@ -60,7 +63,7 @@ export const clockIn = (req: Request, res: Response) => {
       return;
     }
     
-    const status = determineStatus(now, null, employee.work_start_time);
+    const status = determineStatus(now, null, employee.work_start_time, employee.work_end_time);
     
     const sql = `INSERT OR REPLACE INTO time_records (employee_id, record_date, clock_in_time, status) 
                  VALUES (?, ?, ?, ?)`;
@@ -83,7 +86,9 @@ export const clockIn = (req: Request, res: Response) => {
 export const clockOut = (req: Request, res: Response) => {
   const { employee_id } = req.body;
   const now = new Date();
-  const today = now.toISOString().split('T')[0];
+  // 0時基準で日付を決定（JST）
+  const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const today = jstNow.toISOString().split('T')[0];
   
   // 今日の出勤記録を取得
   db.get('SELECT * FROM time_records WHERE employee_id = ? AND record_date = ?', [employee_id, today], (err, record: any) => {
@@ -119,13 +124,13 @@ export const clockOut = (req: Request, res: Response) => {
     console.log(`Employee: ${employee_id}, Clock In: ${clockInTime.toISOString()}, Clock Out: ${now.toISOString()}, Work Minutes: ${workMinutes}, Work Hours: ${workHours}`);
     
     // 社員の勤務時間を取得してステータス再判定
-    db.get('SELECT work_start_time FROM employees WHERE employee_id = ?', [employee_id], (err, employee: any) => {
+    db.get('SELECT work_start_time, work_end_time FROM employees WHERE employee_id = ?', [employee_id], (err, employee: any) => {
       if (err) {
         res.status(500).json({ error: err.message });
         return;
       }
       
-      const status = determineStatus(clockInTime, now, employee.work_start_time);
+      const status = determineStatus(clockInTime, now, employee.work_start_time, employee.work_end_time);
       
       const sql = `UPDATE time_records SET clock_out_time = ?, work_hours = ?, status = ?, updated_at = CURRENT_TIMESTAMP 
                    WHERE employee_id = ? AND record_date = ?`;
@@ -218,7 +223,10 @@ export const getTimeRecordsForExport = (req: Request, res: Response) => {
 // 今日の特定社員の記録取得（最新のもの）
 export const getTodayRecord = (req: Request, res: Response) => {
   const { employee_id } = req.params;
-  const today = new Date().toISOString().split('T')[0];
+  // 0時基準で日付を決定（JST）
+  const now = new Date();
+  const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
+  const today = jstNow.toISOString().split('T')[0];
   
   const sql = `SELECT tr.*, e.name as employee_name 
                FROM time_records tr 
@@ -233,5 +241,46 @@ export const getTodayRecord = (req: Request, res: Response) => {
       return;
     }
     res.json(row || null);
+  });
+};
+
+// 打刻記録削除
+export const deleteTimeRecord = (req: Request, res: Response) => {
+  const { employee_id, record_date } = req.params;
+  
+  // まず該当レコードの存在確認
+  db.get('SELECT * FROM time_records WHERE employee_id = ? AND record_date = ?', 
+    [employee_id, record_date], (err, record: any) => {
+    if (err) {
+      res.status(500).json({ error: err.message });
+      return;
+    }
+    
+    if (!record) {
+      res.status(404).json({ error: '指定された打刻記録が見つかりません' });
+      return;
+    }
+    
+    // レコード削除実行
+    const sql = `DELETE FROM time_records WHERE employee_id = ? AND record_date = ?`;
+    
+    db.run(sql, [employee_id, record_date], function(err) {
+      if (err) {
+        res.status(400).json({ error: err.message });
+        return;
+      }
+      
+      if (this.changes === 0) {
+        res.status(404).json({ error: '削除対象の記録が見つかりません' });
+        return;
+      }
+      
+      res.json({ 
+        message: '打刻記録を削除しました',
+        deleted_count: this.changes,
+        employee_id,
+        record_date
+      });
+    });
   });
 };
