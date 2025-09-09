@@ -1,5 +1,6 @@
 import { Employee, TimeRecord } from './supabase'
 import { mockEmployees, mockTimeRecords } from './mockData'
+import { getJSTDate } from '../utils/dateUtils'
 
 // デモ環境用のデータベースサービス
 export const demoEmployeeService = {
@@ -58,7 +59,7 @@ export const demoEmployeeService = {
 
 export const demoTimeRecordService = {
   async clockIn(employeeId: string): Promise<TimeRecord> {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getJSTDate()
     const now = new Date().toISOString()
     
     // 既存の記録をチェック
@@ -102,7 +103,7 @@ export const demoTimeRecordService = {
   },
 
   async clockOut(employeeId: string): Promise<TimeRecord> {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getJSTDate()
     const now = new Date().toISOString()
     
     const existingIndex = mockTimeRecords.findIndex(
@@ -148,7 +149,7 @@ export const demoTimeRecordService = {
   },
 
   async getTodayRecord(employeeId: string): Promise<TimeRecord | null> {
-    const today = new Date().toISOString().split('T')[0]
+    const today = getJSTDate()
     return mockTimeRecords.find(
       record => record.employee_id === employeeId && record.record_date === today
     ) || null
@@ -159,7 +160,8 @@ export const demoTimeRecordService = {
     
     if (year && month) {
       const startDate = `${year}-${month.toString().padStart(2, '0')}-01`
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+      const lastDay = new Date(year, month, 0).getDate()
+      const endDate = `${year}-${month.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`
       records = records.filter(record => record.record_date >= startDate && record.record_date <= endDate)
     }
     

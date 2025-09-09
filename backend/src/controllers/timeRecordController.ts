@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import { db } from '../database/database';
 import { TimeRecord } from '../models/TimeRecord';
+import { getJSTDate } from '../utils/dateUtils';
 
 // ステータス判定ロジック
 const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStartTime: string, workEndTime: string): string => {
@@ -48,8 +49,7 @@ export const clockIn = (req: Request, res: Response) => {
   const { employee_id } = req.body;
   const now = new Date();
   // 0時基準で日付を決定（JST）
-  const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const today = jstNow.toISOString().split('T')[0];
+  const today = getJSTDate(now);
   
   // 社員の勤務時間を取得
   db.get('SELECT work_start_time, work_end_time FROM employees WHERE employee_id = ?', [employee_id], (err, employee: any) => {
@@ -87,8 +87,7 @@ export const clockOut = (req: Request, res: Response) => {
   const { employee_id } = req.body;
   const now = new Date();
   // 0時基準で日付を決定（JST）
-  const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const today = jstNow.toISOString().split('T')[0];
+  const today = getJSTDate(now);
   
   // 今日の出勤記録を取得
   db.get('SELECT * FROM time_records WHERE employee_id = ? AND record_date = ?', [employee_id, today], (err, record: any) => {
@@ -225,8 +224,7 @@ export const getTodayRecord = (req: Request, res: Response) => {
   const { employee_id } = req.params;
   // 0時基準で日付を決定（JST）
   const now = new Date();
-  const jstNow = new Date(now.getTime() + 9 * 60 * 60 * 1000);
-  const today = jstNow.toISOString().split('T')[0];
+  const today = getJSTDate(now);
   
   const sql = `SELECT tr.*, e.name as employee_name 
                FROM time_records tr 

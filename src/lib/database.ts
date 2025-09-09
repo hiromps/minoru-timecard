@@ -1,5 +1,6 @@
 import { supabase, Employee, TimeRecord, isDevMode } from './supabase'
 import { demoEmployeeService, demoTimeRecordService } from './demoDatabase'
+import { getJSTDate, getJSTMonthRange } from '../utils/dateUtils'
 
 // 社員関連の操作
 export const employeeService = {
@@ -145,7 +146,7 @@ export const timeRecordService = {
     }
 
     const now = new Date()
-    const today = now.toISOString().split('T')[0]
+    const today = getJSTDate(now)
     const currentTime = now.toISOString()
     
     // ステータス判定
@@ -199,7 +200,7 @@ export const timeRecordService = {
     }
 
     const now = new Date()
-    const today = now.toISOString().split('T')[0]
+    const today = getJSTDate(now)
     const currentTime = now.toISOString()
 
     // 本日の出勤記録を取得
@@ -262,7 +263,7 @@ export const timeRecordService = {
       return demoTimeRecordService.getTodayRecord(employeeId)
     }
 
-    const today = new Date().toISOString().split('T')[0]
+    const today = getJSTDate()
     console.log('📅 本日記録取得中:', { employeeId, today })
     
     const { data, error } = await supabase
@@ -294,8 +295,7 @@ export const timeRecordService = {
       .order('record_date', { ascending: false })
     
     if (year && month) {
-      const startDate = new Date(year, month - 1, 1).toISOString().split('T')[0]
-      const endDate = new Date(year, month, 0).toISOString().split('T')[0]
+      const { startDate, endDate } = getJSTMonthRange(year, month)
       query = query.gte('record_date', startDate).lte('record_date', endDate)
     }
     
