@@ -70,9 +70,10 @@ export const calculateWorkTimeAndStatus = (
 
   // ステータス判定
   const isEarlyDeparture = clockOut < workEnd;
-  const isOvertimeByTime = clockOut > workEnd; // 退勤時刻による残業判定（1分でも超過したら残業）
-  const isOvertimeByHours = actualWorkMinutes > STANDARD_WORK_MINUTES; // 労働時間による残業判定
-  const isOvertime = isOvertimeByTime || isOvertimeByHours; // どちらかが該当すれば残業
+  
+  // 17:15以降の退勤は残業（1分単位で判定）
+  const overtimeThreshold = new Date(`${today} 17:15:00`);
+  const isOvertime = clockOut >= overtimeThreshold;
 
   if (isLate && isOvertime) {
     return { actualWorkHours, status: '遅刻・残業' };

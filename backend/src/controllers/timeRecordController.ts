@@ -33,10 +33,9 @@ const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStart
       return '早退';
     }
     
-    // 勤務時間計算
-    const workMinutes = clockOutTotalMinutes - clockInTotalMinutes;
-    // 8時間（480分）を超える勤務は残業
-    if (workMinutes > 8 * 60) {
+    // 17:15以降の退勤は残業（1分単位で判定）
+    const overtimeThreshold = 17 * 60 + 15; // 17:15を分単位で表現
+    if (clockOutTotalMinutes >= overtimeThreshold) {
       return '残業';
     }
   }
