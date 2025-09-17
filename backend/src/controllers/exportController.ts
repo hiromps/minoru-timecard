@@ -94,23 +94,27 @@ export const exportTimeRecords = async (req: Request, res: Response) => {
           }
         };
 
-        // 勤務時間を「何時間何分」形式で計算してフォーマット
+        // 勤務時間を「何時間何分」形式で計算してフォーマット（休憩1時間を引く）
         const calculateWorkHours = (clockInTime: string | null, clockOutTime: string | null): string => {
           if (!clockInTime) return '0時間0分';
           if (!clockOutTime) return '-'; // 退勤していない場合
-          
+
           try {
             const clockIn = new Date(clockInTime);
             const clockOut = new Date(clockOutTime);
-            
+
             if (isNaN(clockIn.getTime()) || isNaN(clockOut.getTime())) {
               return '0時間0分';
             }
-            
-            const totalMinutes = Math.max(0, Math.round((clockOut.getTime() - clockIn.getTime()) / (1000 * 60)));
+
+            let totalMinutes = Math.max(0, Math.round((clockOut.getTime() - clockIn.getTime()) / (1000 * 60)));
+
+            // 休憩時間1時間（60分）を引く
+            totalMinutes = Math.max(0, totalMinutes - 60);
+
             const hours = Math.floor(totalMinutes / 60);
             const minutes = totalMinutes % 60;
-            
+
             return `${hours}時間${minutes}分`;
           } catch (error) {
             console.error('Work hours calculation error:', error);
@@ -270,23 +274,27 @@ export const exportTimeRecordsCSV = async (req: Request, res: Response) => {
         }
       };
 
-      // 勤務時間を「何時間何分」形式で計算
+      // 勤務時間を「何時間何分」形式で計算（休憩1時間を引く）
       const calculateWorkHours = (clockInTime: string | null, clockOutTime: string | null): string => {
         if (!clockInTime) return '0時間0分';
         if (!clockOutTime) return '-';
-        
+
         try {
           const clockIn = new Date(clockInTime);
           const clockOut = new Date(clockOutTime);
-          
+
           if (isNaN(clockIn.getTime()) || isNaN(clockOut.getTime())) {
             return '0時間0分';
           }
-          
-          const totalMinutes = Math.max(0, Math.round((clockOut.getTime() - clockIn.getTime()) / (1000 * 60)));
+
+          let totalMinutes = Math.max(0, Math.round((clockOut.getTime() - clockIn.getTime()) / (1000 * 60)));
+
+          // 休憩時間1時間（60分）を引く
+          totalMinutes = Math.max(0, totalMinutes - 60);
+
           const hours = Math.floor(totalMinutes / 60);
           const minutes = totalMinutes % 60;
-          
+
           return `${hours}時間${minutes}分`;
         } catch (error) {
           return '0時間0分';
