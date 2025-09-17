@@ -106,6 +106,10 @@ const TimeClock: React.FC = () => {
       if (selectedEmployee) {
         await fetchTodayRecord(selectedEmployee);
       }
+      
+      // 社員選択をリセット
+      setSelectedEmployee('');
+      setTodayRecord(null);
     } catch (error) {
       console.error('打刻に失敗しました:', error);
       alert(`打刻に失敗しました: ${error instanceof Error ? error.message : 'エラーが発生しました'}`);
