@@ -245,7 +245,7 @@ export const requireAdmin = (req: Request, res: Response, next: any) => {
 // 打刻記録の削除（管理者用）
 export const deleteTimeRecord = (req: Request, res: Response) => {
   const { employee_id, record_date, reason } = req.body;
-  
+
   if (!employee_id || !record_date || !reason) {
     res.status(400).json({ error: '必須パラメータが不足しています' });
     return;
@@ -272,12 +272,195 @@ export const deleteTimeRecord = (req: Request, res: Response) => {
 
       // 監査ログを記録
       logCorrectionAction(db, employee_id, record_date, 'delete', reason, () => {
-        res.json({ 
+        res.json({
           message: '打刻記録を削除しました',
-          deleted_count: this.changes 
+          deleted_count: this.changes
         });
         db.close();
       });
     }
   );
+};
+
+// 古い不完全レコードの一括削除（管理者用）
+export const cleanupIncompleteRecords = (req: Request, res: Response) => {
+  const { days } = req.body;
+  const cleanupDays = days || 30; // デフォルト30日
+
+  const db = new sqlite3.Database(dbPath);
+
+  // 指定日数以前の不完全レコードを検索
+  const searchQuery = `
+    SELECT employee_id, record_date, created_at
+    FROM time_records
+    WHERE clock_out_time IS NULL
+    AND date(created_at) < date('now', '-${cleanupDays} days')
+    ORDER BY created_at DESC
+  `;
+
+  db.all(searchQuery, [], (err, rows: any[]) => {
+    if (err) {
+      console.error('Error searching incomplete records:', err);
+      res.status(500).json({ error: 'データベースエラーが発生しました' });
+      db.close();
+      return;
+    }
+
+    if (rows.length === 0) {
+      res.json({
+        message: 'クリーンアップ対象のレコードはありません',
+        cleaned_count: 0,
+        found_records: []
+      });
+      db.close();
+      return;
+    }
+
+    // 削除実行
+    const deleteQuery = `
+      DELETE FROM time_records
+      WHERE clock_out_time IS NULL
+      AND date(created_at) < date('now', '-${cleanupDays} days')
+    `;
+
+    db.run(deleteQuery, [], function(deleteErr) {
+      if (deleteErr) {
+        console.error('Error cleaning up records:', deleteErr);
+        res.status(500).json({ error: 'クリーンアップに失敗しました' });
+        db.close();
+        return;
+      }
+
+      // 監査ログに記録
+      logCorrectionAction(db, 'SYSTEM', `CLEANUP_${cleanupDays}_DAYS`, 'bulk_delete',
+        `${cleanupDays}日以前の不完全レコードを一括削除`, () => {
+        res.json({
+          message: `${cleanupDays}日以前の不完全レコードをクリーンアップしました`,
+          cleaned_count: this.changes,
+          found_records: rows.map(row => ({
+            employee_id: row.employee_id,
+            record_date: row.record_date,
+            created_at: row.created_at
+          }))
+        });
+        db.close();
+      });
+    });
+  });
+};
+
+// ステータスの一括再計算（管理者用）
+export const recalculateAllStatuses = (req: Request, res: Response) => {
+  const db = new sqlite3.Database(dbPath);
+
+  // 完全なレコード（出勤・退勤両方あり）を取得
+  const query = `
+    SELECT tr.id, tr.employee_id, tr.record_date, tr.clock_in_time, tr.clock_out_time,
+           e.work_start_time, e.work_end_time
+    FROM time_records tr
+    JOIN employees e ON tr.employee_id = e.employee_id
+    WHERE tr.clock_in_time IS NOT NULL AND tr.clock_out_time IS NOT NULL
+    ORDER BY tr.record_date DESC
+  `;
+
+  db.all(query, [], (err, rows: any[]) => {
+    if (err) {
+      console.error('Error fetching records for recalculation:', err);
+      res.status(500).json({ error: 'データベースエラーが発生しました' });
+      db.close();
+      return;
+    }
+
+    if (rows.length === 0) {
+      res.json({
+        message: '再計算対象のレコードはありません',
+        updated_count: 0
+      });
+      db.close();
+      return;
+    }
+
+    let updatedCount = 0;
+    let processedCount = 0;
+
+    rows.forEach((record) => {
+      const clockInTime = new Date(record.clock_in_time);
+      const clockOutTime = new Date(record.clock_out_time);
+
+      // ステータス再計算
+      const newStatus = determineNewStatus(clockInTime, clockOutTime,
+        record.work_start_time, record.work_end_time);
+
+      // 勤務時間再計算
+      const workMinutes = Math.round((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60));
+      const workHours = workMinutes / 60;
+
+      // レコード更新
+      db.run(
+        `UPDATE time_records
+         SET status = ?, work_hours = ?, updated_at = datetime('now')
+         WHERE id = ?`,
+        [newStatus, workHours, record.id],
+        function(updateErr) {
+          if (!updateErr && this.changes > 0) {
+            updatedCount++;
+          }
+
+          processedCount++;
+
+          // 全レコード処理完了時
+          if (processedCount === rows.length) {
+            // 監査ログに記録
+            logCorrectionAction(db, 'SYSTEM', 'RECALCULATE_ALL', 'bulk_update',
+              `全レコードのステータスを再計算（${updatedCount}件更新）`, () => {
+              res.json({
+                message: '全レコードのステータスを再計算しました',
+                total_records: rows.length,
+                updated_count: updatedCount
+              });
+              db.close();
+            });
+          }
+        }
+      );
+    });
+  });
+};
+
+// ステータス判定ロジック（再計算用）
+const determineNewStatus = (clockInTime: Date, clockOutTime: Date, workStartTime: string, workEndTime: string): string => {
+  const clockInHour = clockInTime.getHours();
+  const clockInMinute = clockInTime.getMinutes();
+  const clockInTotalMinutes = clockInHour * 60 + clockInMinute;
+
+  // 個別出勤時間との比較
+  const [workStartHour, workStartMinute] = workStartTime.split(':').map(Number);
+  const workStartTotalMinutes = workStartHour * 60 + workStartMinute;
+
+  // 個別退勤時間
+  const [workEndHour, workEndMinute] = workEndTime.split(':').map(Number);
+  const workEndTotalMinutes = workEndHour * 60 + workEndMinute;
+
+  // 出勤時間による遅刻判定
+  if (clockInTotalMinutes > workStartTotalMinutes) {
+    return '遅刻';
+  }
+
+  // 退勤時間チェック
+  const clockOutHour = clockOutTime.getHours();
+  const clockOutMinute = clockOutTime.getMinutes();
+  const clockOutTotalMinutes = clockOutHour * 60 + clockOutMinute;
+
+  // 個別退勤時間前の退勤は早退
+  if (clockOutTotalMinutes < workEndTotalMinutes) {
+    return '早退';
+  }
+
+  // 17:15以降の退勤は残業（1分単位で判定）
+  const overtimeThreshold = 17 * 60 + 15; // 17:15を分単位で表現
+  if (clockOutTotalMinutes >= overtimeThreshold) {
+    return '残業';
+  }
+
+  return '通常';
 };

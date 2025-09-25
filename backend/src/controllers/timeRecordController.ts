@@ -43,39 +43,84 @@ const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStart
   return '通常';
 };
 
+// 古いレコードをクリーンアップする関数
+const cleanupOldRecords = (employee_id: string, record_date: string) => {
+  // 30日以前の不完全なレコード（clock_out_timeがnullのもの）を削除
+  const thirtyDaysAgo = new Date();
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30);
+  const cleanupDate = getJSTDate(thirtyDaysAgo);
+
+  const cleanupSql = `DELETE FROM time_records
+                      WHERE employee_id = ?
+                      AND record_date < ?
+                      AND clock_out_time IS NULL`;
+
+  db.run(cleanupSql, [employee_id, cleanupDate], (err) => {
+    if (err) {
+      console.log('クリーンアップエラー:', err.message);
+    } else {
+      console.log(`古い不完全レコードをクリーンアップしました: ${employee_id}`);
+    }
+  });
+};
+
 // 出勤打刻
 export const clockIn = (req: Request, res: Response) => {
   const { employee_id } = req.body;
   const now = new Date();
   // 0時基準で日付を決定（JST）
   const today = getJSTDate(now);
-  
+
+  // 古いレコードのクリーンアップを実行
+  cleanupOldRecords(employee_id, today);
+
   // 社員の勤務時間を取得
   db.get('SELECT work_start_time, work_end_time FROM employees WHERE employee_id = ?', [employee_id], (err, employee: any) => {
     if (err) {
       res.status(500).json({ error: err.message });
       return;
     }
-    
+
     if (!employee) {
       res.status(404).json({ error: '社員が見つかりません' });
       return;
     }
-    
-    const status = determineStatus(now, null, employee.work_start_time, employee.work_end_time);
-    
-    const sql = `INSERT OR REPLACE INTO time_records (employee_id, record_date, clock_in_time, status) 
-                 VALUES (?, ?, ?, ?)`;
-    
-    db.run(sql, [employee_id, today, now.toISOString(), status], function(err) {
+
+    // 既存レコードの確認
+    db.get('SELECT * FROM time_records WHERE employee_id = ? AND record_date = ?', [employee_id, today], (err, existingRecord: any) => {
       if (err) {
-        res.status(400).json({ error: err.message });
+        res.status(500).json({ error: err.message });
         return;
       }
-      res.json({ 
-        message: '出勤打刻が完了しました',
-        status,
-        time: now.toISOString()
+
+      const status = determineStatus(now, null, employee.work_start_time, employee.work_end_time);
+
+      let sql: string;
+      let params: any[];
+
+      if (existingRecord) {
+        // 既存レコードがある場合は出勤時刻のみ更新（退勤データは保持）
+        sql = `UPDATE time_records
+               SET clock_in_time = ?, status = ?, updated_at = CURRENT_TIMESTAMP
+               WHERE employee_id = ? AND record_date = ?`;
+        params = [now.toISOString(), status, employee_id, today];
+      } else {
+        // 新規レコード作成
+        sql = `INSERT INTO time_records (employee_id, record_date, clock_in_time, status)
+               VALUES (?, ?, ?, ?)`;
+        params = [employee_id, today, now.toISOString(), status];
+      }
+
+      db.run(sql, params, function(err) {
+        if (err) {
+          res.status(400).json({ error: err.message });
+          return;
+        }
+        res.json({
+          message: '出勤打刻が完了しました',
+          status,
+          time: now.toISOString()
+        });
       });
     });
   });
