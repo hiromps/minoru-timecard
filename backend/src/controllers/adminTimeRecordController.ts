@@ -89,46 +89,68 @@ const handleDeleteAndCreate = (
           return;
         }
 
-        // 勤務時間とステータスを計算
-        let work_hours = 0;
-        let status = '通常';
-        
-        if (clock_in_time && clock_out_time) {
-          const clockIn = new Date(clock_in_time);
-          const clockOut = new Date(clock_out_time);
-          work_hours = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60 * 60); // 時間単位
-          
-          if (work_hours > 8) {
-            status = '残業';
+        // 社員の勤務時間設定を取得してステータス計算
+        db.get('SELECT work_start_time, work_end_time FROM employees WHERE employee_id = ?', [employee_id], (employeeErr, employee: any) => {
+          if (employeeErr) {
+            console.error('Error fetching employee data:', employeeErr);
+            db.run('ROLLBACK');
+            res.status(500).json({ error: '社員データの取得に失敗しました' });
+            db.close();
+            return;
           }
-        }
 
-        // 新しいレコードを作成
-        db.run(
-          `INSERT INTO time_records 
-           (employee_id, record_date, clock_in_time, clock_out_time, work_hours, status, is_manual_entry, created_at, updated_at) 
-           VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`,
-          [employee_id, record_date, clock_in_time || null, clock_out_time || null, work_hours, status],
-          function(insertErr) {
-            if (insertErr) {
-              console.error('Error creating new time record:', insertErr);
-              db.run('ROLLBACK');
-              res.status(500).json({ error: '新しいレコードの作成に失敗しました' });
-              db.close();
-              return;
-            }
+          if (!employee) {
+            console.error('Employee not found:', employee_id);
+            db.run('ROLLBACK');
+            res.status(404).json({ error: '社員が見つかりません' });
+            db.close();
+            return;
+          }
 
-            // 監査ログを記録
-            logCorrectionAction(db, employee_id, record_date, 'delete_and_create', reason, () => {
-              db.run('COMMIT');
-              res.json({ 
-                message: '打刻記録を修正しました（削除・再作成）',
-                record_id: this.lastID 
+          // 勤務時間とステータスを計算
+          let work_hours = 0;
+          let status = '通常';
+
+          if (clock_in_time && clock_out_time) {
+            const clockIn = new Date(clock_in_time);
+            const clockOut = new Date(clock_out_time);
+            work_hours = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60 * 60); // 時間単位
+
+            // 統一されたステータス判定ロジックを使用
+            status = determineNewStatus(clockIn, clockOut, employee.work_start_time, employee.work_end_time);
+          } else if (clock_in_time) {
+            // 出勤のみの場合
+            const clockIn = new Date(clock_in_time);
+            status = determineNewStatus(clockIn, null, employee.work_start_time, employee.work_end_time);
+          }
+
+          // 新しいレコードを作成
+          db.run(
+            `INSERT INTO time_records
+             (employee_id, record_date, clock_in_time, clock_out_time, work_hours, status, is_manual_entry, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, 1, datetime('now'), datetime('now'))`,
+            [employee_id, record_date, clock_in_time || null, clock_out_time || null, work_hours, status],
+            function(insertErr) {
+              if (insertErr) {
+                console.error('Error creating new time record:', insertErr);
+                db.run('ROLLBACK');
+                res.status(500).json({ error: '新しいレコードの作成に失敗しました' });
+                db.close();
+                return;
+              }
+
+              // 監査ログを記録
+              logCorrectionAction(db, employee_id, record_date, 'delete_and_create', reason, () => {
+                db.run('COMMIT');
+                res.json({
+                  message: '打刻記録を修正しました（削除・再作成）',
+                  record_id: this.lastID
+                });
+                db.close();
               });
-              db.close();
-            });
-          }
-        );
+            }
+          );
+        });
       }
     );
   });
@@ -136,60 +158,80 @@ const handleDeleteAndCreate = (
 
 // 既存レコード更新の処理
 const handleUpdate = (
-  db: sqlite3.Database, 
-  employee_id: string, 
-  record_date: string, 
-  clock_in_time: string, 
-  clock_out_time: string, 
-  reason: string, 
+  db: sqlite3.Database,
+  employee_id: string,
+  record_date: string,
+  clock_in_time: string,
+  clock_out_time: string,
+  reason: string,
   res: Response
 ) => {
   db.serialize(() => {
-    // 勤務時間とステータスを計算
-    let work_hours = 0;
-    let status = '通常';
-    
-    if (clock_in_time && clock_out_time) {
-      const clockIn = new Date(clock_in_time);
-      const clockOut = new Date(clock_out_time);
-      work_hours = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60 * 60);
-      
-      if (work_hours > 8) {
-        status = '残業';
+    // 社員の勤務時間設定を取得してステータス計算
+    db.get('SELECT work_start_time, work_end_time FROM employees WHERE employee_id = ?', [employee_id], (employeeErr, employee: any) => {
+      if (employeeErr) {
+        console.error('Error fetching employee data:', employeeErr);
+        res.status(500).json({ error: '社員データの取得に失敗しました' });
+        db.close();
+        return;
       }
-    }
 
-    // レコードを更新
-    db.run(
-      `UPDATE time_records 
-       SET clock_in_time = ?, clock_out_time = ?, work_hours = ?, status = ?, 
-           is_manual_entry = 1, updated_at = datetime('now')
-       WHERE employee_id = ? AND record_date = ?`,
-      [clock_in_time || null, clock_out_time || null, work_hours, status, employee_id, record_date],
-      function(updateErr) {
-        if (updateErr) {
-          console.error('Error updating time record:', updateErr);
-          res.status(500).json({ error: 'レコードの更新に失敗しました' });
-          db.close();
-          return;
-        }
+      if (!employee) {
+        console.error('Employee not found:', employee_id);
+        res.status(404).json({ error: '社員が見つかりません' });
+        db.close();
+        return;
+      }
 
-        if (this.changes === 0) {
-          res.status(404).json({ error: '対象のレコードが見つかりません' });
-          db.close();
-          return;
-        }
+      // 勤務時間とステータスを計算
+      let work_hours = 0;
+      let status = '通常';
 
-        // 監査ログを記録
-        logCorrectionAction(db, employee_id, record_date, 'update', reason, () => {
-          res.json({ 
-            message: '打刻記録を更新しました',
-            changes: this.changes 
+      if (clock_in_time && clock_out_time) {
+        const clockIn = new Date(clock_in_time);
+        const clockOut = new Date(clock_out_time);
+        work_hours = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60 * 60);
+
+        // 統一されたステータス判定ロジックを使用
+        status = determineNewStatus(clockIn, clockOut, employee.work_start_time, employee.work_end_time);
+      } else if (clock_in_time) {
+        // 出勤のみの場合
+        const clockIn = new Date(clock_in_time);
+        status = determineNewStatus(clockIn, null, employee.work_start_time, employee.work_end_time);
+      }
+
+      // レコードを更新
+      db.run(
+        `UPDATE time_records
+         SET clock_in_time = ?, clock_out_time = ?, work_hours = ?, status = ?,
+             is_manual_entry = 1, updated_at = datetime('now')
+         WHERE employee_id = ? AND record_date = ?`,
+        [clock_in_time || null, clock_out_time || null, work_hours, status, employee_id, record_date],
+        function(updateErr) {
+          if (updateErr) {
+            console.error('Error updating time record:', updateErr);
+            res.status(500).json({ error: 'レコードの更新に失敗しました' });
+            db.close();
+            return;
+          }
+
+          if (this.changes === 0) {
+            res.status(404).json({ error: '対象のレコードが見つかりません' });
+            db.close();
+            return;
+          }
+
+          // 監査ログを記録
+          logCorrectionAction(db, employee_id, record_date, 'update', reason, () => {
+            res.json({
+              message: '打刻記録を更新しました',
+              changes: this.changes
+            });
+            db.close();
           });
-          db.close();
-        });
-      }
-    );
+        }
+      );
+    });
   });
 };
 
@@ -427,40 +469,115 @@ export const recalculateAllStatuses = (req: Request, res: Response) => {
   });
 };
 
-// ステータス判定ロジック（再計算用）
-const determineNewStatus = (clockInTime: Date, clockOutTime: Date, workStartTime: string, workEndTime: string): string => {
-  const clockInHour = clockInTime.getHours();
-  const clockInMinute = clockInTime.getMinutes();
+// ステータス判定ロジック（再計算用・動的組み合わせ対応）
+const determineNewStatus = (clockInTime: Date, clockOutTime: Date | null, workStartTime: string, workEndTime: string): string => {
+  // 時間データの検証とログ
+  console.log('=== 再計算用ステータス判定 ===');
+  console.log('clockInTime:', clockInTime);
+  console.log('clockOutTime:', clockOutTime);
+  console.log('workStartTime:', workStartTime);
+  console.log('workEndTime:', workEndTime);
+
+  // Dateオブジェクトの確実な変換
+  let actualClockIn: Date;
+  if (clockInTime instanceof Date) {
+    actualClockIn = clockInTime;
+  } else {
+    actualClockIn = new Date(clockInTime);
+  }
+
+  let actualClockOut: Date | null = null;
+  if (clockOutTime) {
+    if (clockOutTime instanceof Date) {
+      actualClockOut = clockOutTime;
+    } else {
+      actualClockOut = new Date(clockOutTime);
+    }
+  }
+
+  // JST時刻で計算
+  const clockInHour = actualClockIn.getHours();
+  const clockInMinute = actualClockIn.getMinutes();
   const clockInTotalMinutes = clockInHour * 60 + clockInMinute;
 
-  // 個別出勤時間との比較
+  // 個別出勤時間との比較（入力検証追加）
+  if (!workStartTime || !workStartTime.includes(':')) {
+    console.error('❌ workStartTime が無効:', workStartTime);
+    return '設定エラー';
+  }
+
   const [workStartHour, workStartMinute] = workStartTime.split(':').map(Number);
+  if (isNaN(workStartHour) || isNaN(workStartMinute)) {
+    console.error('❌ workStartTime パース失敗:', workStartTime);
+    return '設定エラー';
+  }
   const workStartTotalMinutes = workStartHour * 60 + workStartMinute;
 
   // 個別退勤時間
+  if (!workEndTime || !workEndTime.includes(':')) {
+    console.error('❌ workEndTime が無効:', workEndTime);
+    return '設定エラー';
+  }
+
   const [workEndHour, workEndMinute] = workEndTime.split(':').map(Number);
+  if (isNaN(workEndHour) || isNaN(workEndMinute)) {
+    console.error('❌ workEndTime パース失敗:', workEndTime);
+    return '設定エラー';
+  }
   const workEndTotalMinutes = workEndHour * 60 + workEndMinute;
 
-  // 出勤時間による遅刻判定
-  if (clockInTotalMinutes > workStartTotalMinutes) {
-    return '遅刻';
+  // デバッグログ（詳細な判定情報）
+  console.log('=== ステータス判定詳細 ===');
+  console.log(`出勤時刻: ${clockInHour}:${clockInMinute.toString().padStart(2, '0')} (${clockInTotalMinutes}分)`);
+  console.log(`設定出勤: ${workStartTime} (${workStartTotalMinutes}分)`);
+  console.log(`設定退勤: ${workEndTime} (${workEndTotalMinutes}分)`);
+
+  // 各種判定フラグ
+  const isLate = clockInTotalMinutes > workStartTotalMinutes;
+  let isEarlyLeave = false;
+  let isOvertime = false;
+
+  console.log(`遅刻判定: ${clockInTotalMinutes} > ${workStartTotalMinutes} = ${isLate}`);
+
+  // 退勤時間がある場合の追加判定
+  if (actualClockOut) {
+    const clockOutHour = actualClockOut.getHours();
+    const clockOutMinute = actualClockOut.getMinutes();
+    const clockOutTotalMinutes = clockOutHour * 60 + clockOutMinute;
+    console.log(`退勤時刻: ${clockOutHour}:${clockOutMinute.toString().padStart(2, '0')} (${clockOutTotalMinutes}分)`);
+
+    isEarlyLeave = clockOutTotalMinutes < workEndTotalMinutes;
+    isOvertime = clockOutTotalMinutes > workEndTotalMinutes;
+
+    console.log(`早退判定: ${clockOutTotalMinutes} < ${workEndTotalMinutes} = ${isEarlyLeave}`);
+    console.log(`残業判定: ${clockOutTotalMinutes} > ${workEndTotalMinutes} = ${isOvertime}`);
+  } else {
+    console.log('退勤時刻: 未退勤');
   }
 
-  // 退勤時間チェック
-  const clockOutHour = clockOutTime.getHours();
-  const clockOutMinute = clockOutTime.getMinutes();
-  const clockOutTotalMinutes = clockOutHour * 60 + clockOutMinute;
+  // 動的ステータス組み合わせ
+  const statusParts: string[] = [];
 
-  // 個別退勤時間前の退勤は早退
-  if (clockOutTotalMinutes < workEndTotalMinutes) {
-    return '早退';
+  // 優先順位に従ってステータスを追加
+  if (isLate) {
+    statusParts.push('遅刻');
+    console.log('✓ 遅刻ステータス追加');
   }
 
-  // 17:15以降の退勤は残業（1分単位で判定）
-  const overtimeThreshold = 17 * 60 + 15; // 17:15を分単位で表現
-  if (clockOutTotalMinutes >= overtimeThreshold) {
-    return '残業';
+  if (actualClockOut) { // 退勤済みの場合のみ退勤関連ステータスを判定
+    if (isEarlyLeave) {
+      statusParts.push('早退');
+      console.log('✓ 早退ステータス追加');
+    } else if (isOvertime) {
+      statusParts.push('残業');
+      console.log('✓ 残業ステータス追加');
+    }
   }
 
-  return '通常';
+  // ステータスが複数ある場合は「・」で結合、なければ「通常」
+  const finalStatus = statusParts.length > 0 ? statusParts.join('・') : '通常';
+  console.log(`最終ステータス: "${finalStatus}"`);
+  console.log('=========================\n');
+
+  return finalStatus;
 };
