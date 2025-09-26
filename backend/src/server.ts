@@ -4,7 +4,7 @@ import * as https from 'https';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as dotenv from 'dotenv';
-import { initializeDatabase } from './database/database';
+import { initializeDatabase, migrateDatabase } from './database/database';
 import employeeRoutes from './routes/employeeRoutes';
 import timeRecordRoutes from './routes/timeRecordRoutes';
 import adminRoutes from './routes/adminRoutes';
@@ -35,6 +35,9 @@ if (process.env.NODE_ENV === 'production') {
 
 // データベース初期化
 initializeDatabase();
+
+// データベースマイグレーション（複合ステータス対応）
+migrateDatabase();
 
 // ルート（API）
 app.use('/api/employees', employeeRoutes);

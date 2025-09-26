@@ -3,7 +3,7 @@ import { db } from '../database/database';
 import { TimeRecord } from '../models/TimeRecord';
 import { getJSTDate } from '../utils/dateUtils';
 
-// ステータス判定ロジック（改良版）
+// ステータス判定ロジック（動的組み合わせ版）
 const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStartTime: string, workEndTime: string): string => {
   const clockInHour = clockInTime.getHours();
   const clockInMinute = clockInTime.getMinutes();
@@ -17,8 +17,10 @@ const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStart
   const [workEndHour, workEndMinute] = workEndTime.split(':').map(Number);
   const workEndTotalMinutes = workEndHour * 60 + workEndMinute;
 
-  // 出勤時の遅刻判定（1分でも遅れたら遅刻）
+  // 各種判定フラグ
   const isLate = clockInTotalMinutes > workStartTotalMinutes;
+  let isEarlyLeave = false;
+  let isOvertime = false;
 
   // 退勤時間がある場合の追加判定
   if (clockOutTime) {
@@ -26,31 +28,30 @@ const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStart
     const clockOutMinute = clockOutTime.getMinutes();
     const clockOutTotalMinutes = clockOutHour * 60 + clockOutMinute;
 
-    // 個別退勤時間前の退勤は早退
-    const isEarlyLeave = clockOutTotalMinutes < workEndTotalMinutes;
+    // 個別退勤時間との比較
+    isEarlyLeave = clockOutTotalMinutes < workEndTotalMinutes;
+    isOvertime = clockOutTotalMinutes > workEndTotalMinutes;
+  }
 
-    // 個別退勤時間を過ぎての退勤は残業
-    const isOvertime = clockOutTotalMinutes > workEndTotalMinutes;
+  // 動的ステータス組み合わせ
+  const statusParts: string[] = [];
 
-    // ステータス優先順位：遅刻 > 早退 > 残業 > 通常
-    if (isLate && isEarlyLeave) {
-      return '遅刻・早退';
-    } else if (isLate && isOvertime) {
-      return '遅刻・残業';
-    } else if (isLate) {
-      return '遅刻';
-    } else if (isEarlyLeave) {
-      return '早退';
+  // 優先順位に従ってステータスを追加
+  if (isLate) {
+    statusParts.push('遅刻');
+  }
+
+  if (clockOutTime) { // 退勤済みの場合のみ退勤関連ステータスを判定
+    if (isEarlyLeave) {
+      statusParts.push('早退');
     } else if (isOvertime) {
-      return '残業';
-    } else {
-      return '通常';
+      statusParts.push('残業');
     }
   }
 
-  // 出勤のみの場合（退勤前）
-  if (isLate) {
-    return '遅刻';
+  // ステータスが複数ある場合は「・」で結合、なければ「通常」
+  if (statusParts.length > 0) {
+    return statusParts.join('・');
   }
 
   return '通常';
