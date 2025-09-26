@@ -3,24 +3,72 @@ import { db } from '../database/database';
 import { TimeRecord } from '../models/TimeRecord';
 import { getJSTDate } from '../utils/dateUtils';
 
-// ステータス判定ロジック（動的組み合わせ版）
+// ステータス判定ロジック（動的組み合わせ版 + デバッグ強化）
 const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStartTime: string, workEndTime: string): string => {
-  const clockInHour = clockInTime.getHours();
-  const clockInMinute = clockInTime.getMinutes();
+  // 時間データの検証とログ
+  console.log('=== 入力データ検証 ===');
+  console.log('clockInTime:', clockInTime);
+  console.log('clockOutTime:', clockOutTime);
+  console.log('workStartTime:', workStartTime);
+  console.log('workEndTime:', workEndTime);
+  console.log('clockInTime type:', typeof clockInTime);
+
+  // Dateオブジェクトの確実な変換
+  let actualClockIn: Date;
+  if (clockInTime instanceof Date) {
+    actualClockIn = clockInTime;
+  } else {
+    actualClockIn = new Date(clockInTime);
+  }
+
+  // JST時刻で計算（UTCとの混同を防ぐ）
+  const clockInHour = actualClockIn.getHours();
+  const clockInMinute = actualClockIn.getMinutes();
   const clockInTotalMinutes = clockInHour * 60 + clockInMinute;
 
-  // 個別出勤時間との比較
+  // 個別出勤時間との比較（入力検証追加）
+  if (!workStartTime || !workStartTime.includes(':')) {
+    console.error('❌ workStartTime が無効:', workStartTime);
+    return '設定エラー';
+  }
+
   const [workStartHour, workStartMinute] = workStartTime.split(':').map(Number);
+  if (isNaN(workStartHour) || isNaN(workStartMinute)) {
+    console.error('❌ workStartTime パース失敗:', workStartTime);
+    return '設定エラー';
+  }
   const workStartTotalMinutes = workStartHour * 60 + workStartMinute;
 
   // 個別退勤時間
+  if (!workEndTime || !workEndTime.includes(':')) {
+    console.error('❌ workEndTime が無効:', workEndTime);
+    return '設定エラー';
+  }
+
   const [workEndHour, workEndMinute] = workEndTime.split(':').map(Number);
+  if (isNaN(workEndHour) || isNaN(workEndMinute)) {
+    console.error('❌ workEndTime パース失敗:', workEndTime);
+    return '設定エラー';
+  }
   const workEndTotalMinutes = workEndHour * 60 + workEndMinute;
+
+  // デバッグログ（詳細な判定情報）
+  console.log('=== ステータス判定詳細 ===');
+  console.log(`出勤時刻: ${clockInHour}:${clockInMinute.toString().padStart(2, '0')} (${clockInTotalMinutes}分)`);
+  console.log(`設定出勤: ${workStartTime} (${workStartTotalMinutes}分)`);
+  console.log(`設定退勤: ${workEndTime} (${workEndTotalMinutes}分)`);
+  if (clockOutTime) {
+    const clockOutHour = clockOutTime.getHours();
+    const clockOutMinute = clockOutTime.getMinutes();
+    console.log(`退勤時刻: ${clockOutHour}:${clockOutMinute.toString().padStart(2, '0')} (${clockOutHour * 60 + clockOutMinute}分)`);
+  }
 
   // 各種判定フラグ
   const isLate = clockInTotalMinutes > workStartTotalMinutes;
   let isEarlyLeave = false;
   let isOvertime = false;
+
+  console.log(`遅刻判定: ${clockInTotalMinutes} > ${workStartTotalMinutes} = ${isLate}`);
 
   // 退勤時間がある場合の追加判定
   if (clockOutTime) {
@@ -31,6 +79,9 @@ const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStart
     // 個別退勤時間との比較
     isEarlyLeave = clockOutTotalMinutes < workEndTotalMinutes;
     isOvertime = clockOutTotalMinutes > workEndTotalMinutes;
+
+    console.log(`早退判定: ${clockOutTotalMinutes} < ${workEndTotalMinutes} = ${isEarlyLeave}`);
+    console.log(`残業判定: ${clockOutTotalMinutes} > ${workEndTotalMinutes} = ${isOvertime}`);
   }
 
   // 動的ステータス組み合わせ
@@ -39,22 +90,25 @@ const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStart
   // 優先順位に従ってステータスを追加
   if (isLate) {
     statusParts.push('遅刻');
+    console.log('✓ 遅刻ステータス追加');
   }
 
   if (clockOutTime) { // 退勤済みの場合のみ退勤関連ステータスを判定
     if (isEarlyLeave) {
       statusParts.push('早退');
+      console.log('✓ 早退ステータス追加');
     } else if (isOvertime) {
       statusParts.push('残業');
+      console.log('✓ 残業ステータス追加');
     }
   }
 
   // ステータスが複数ある場合は「・」で結合、なければ「通常」
-  if (statusParts.length > 0) {
-    return statusParts.join('・');
-  }
+  const finalStatus = statusParts.length > 0 ? statusParts.join('・') : '通常';
+  console.log(`最終ステータス: "${finalStatus}"`);
+  console.log('=========================\n');
 
-  return '通常';
+  return finalStatus;
 };
 
 // 古いレコードをクリーンアップする関数
