@@ -3,43 +3,56 @@ import { db } from '../database/database';
 import { TimeRecord } from '../models/TimeRecord';
 import { getJSTDate } from '../utils/dateUtils';
 
-// ステータス判定ロジック
+// ステータス判定ロジック（改良版）
 const determineStatus = (clockInTime: Date, clockOutTime: Date | null, workStartTime: string, workEndTime: string): string => {
   const clockInHour = clockInTime.getHours();
   const clockInMinute = clockInTime.getMinutes();
   const clockInTotalMinutes = clockInHour * 60 + clockInMinute;
-  
+
   // 個別出勤時間との比較
   const [workStartHour, workStartMinute] = workStartTime.split(':').map(Number);
   const workStartTotalMinutes = workStartHour * 60 + workStartMinute;
-  
+
   // 個別退勤時間
   const [workEndHour, workEndMinute] = workEndTime.split(':').map(Number);
   const workEndTotalMinutes = workEndHour * 60 + workEndMinute;
-  
-  // 出勤時間による遅刻判定
-  if (clockInTotalMinutes > workStartTotalMinutes) {
-    return '遅刻';
-  }
-  
-  // 退勤時間チェック
+
+  // 出勤時の遅刻判定（1分でも遅れたら遅刻）
+  const isLate = clockInTotalMinutes > workStartTotalMinutes;
+
+  // 退勤時間がある場合の追加判定
   if (clockOutTime) {
     const clockOutHour = clockOutTime.getHours();
     const clockOutMinute = clockOutTime.getMinutes();
     const clockOutTotalMinutes = clockOutHour * 60 + clockOutMinute;
-    
+
     // 個別退勤時間前の退勤は早退
-    if (clockOutTotalMinutes < workEndTotalMinutes) {
+    const isEarlyLeave = clockOutTotalMinutes < workEndTotalMinutes;
+
+    // 個別退勤時間を過ぎての退勤は残業
+    const isOvertime = clockOutTotalMinutes > workEndTotalMinutes;
+
+    // ステータス優先順位：遅刻 > 早退 > 残業 > 通常
+    if (isLate && isEarlyLeave) {
+      return '遅刻・早退';
+    } else if (isLate && isOvertime) {
+      return '遅刻・残業';
+    } else if (isLate) {
+      return '遅刻';
+    } else if (isEarlyLeave) {
       return '早退';
-    }
-    
-    // 17:15以降の退勤は残業（1分単位で判定）
-    const overtimeThreshold = 17 * 60 + 15; // 17:15を分単位で表現
-    if (clockOutTotalMinutes >= overtimeThreshold) {
+    } else if (isOvertime) {
       return '残業';
+    } else {
+      return '通常';
     }
   }
-  
+
+  // 出勤のみの場合（退勤前）
+  if (isLate) {
+    return '遅刻';
+  }
+
   return '通常';
 };
 
