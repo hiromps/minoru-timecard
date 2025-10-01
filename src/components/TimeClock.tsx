@@ -11,9 +11,9 @@ const TimeClock: React.FC = () => {
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [clockType, setClockType] = useState<'in' | 'out'>('in');
   const [employeeRecords, setEmployeeRecords] = useState<TimeRecord[]>([]);
-  const [showTimeSpecModal, setShowTimeSpecModal] = useState<boolean>(false);
   const [specifiedTime, setSpecifiedTime] = useState<string>('');
   const [isDirectWork, setIsDirectWork] = useState<boolean>(false);
+  const [useSpecifiedTime, setUseSpecifiedTime] = useState<boolean>(false);
   const [showCalendar, setShowCalendar] = useState<boolean>(false);
   const [currentDate] = useState<Date>(new Date());
   const [todayRecord, setTodayRecord] = useState<TimeRecord | null>(null);
@@ -74,39 +74,62 @@ const TimeClock: React.FC = () => {
     setCurrentTime(now.toLocaleString('ja-JP'));
   };
 
-  const handleClockAction = async (type: 'in' | 'out', useSpecifiedTime: boolean = false) => {
+  const handleClockAction = async (type: 'in' | 'out') => {
     if (!selectedEmployee) {
       alert('社員を選択してください');
       return;
     }
     setClockType(type);
 
-    if (useSpecifiedTime) {
-      // 時刻指定モードの場合
-      const now = new Date();
-      const timeString = now.toTimeString().slice(0, 5); // HH:MM形式
-      setSpecifiedTime(timeString);
-      setShowTimeSpecModal(true);
-    } else {
-      // 通常打刻の場合
-      // 退勤打刻の場合、最新の本日記録を取得
-      if (type === 'out') {
-        await fetchTodayRecord(selectedEmployee);
-      }
-      setShowConfirmModal(true);
+    // 退勤打刻の場合、最新の本日記録を取得
+    if (type === 'out') {
+      await fetchTodayRecord(selectedEmployee);
     }
+
+    // デフォルト値を設定
+    const now = new Date();
+    const timeString = now.toTimeString().slice(0, 5); // HH:MM形式
+    setSpecifiedTime(timeString);
+    setUseSpecifiedTime(false);
+    setIsDirectWork(false);
+
+    setShowConfirmModal(true);
   };
 
   const confirmClockAction = async () => {
     try {
-      if (clockType === 'in') {
-        await timeRecordService.clockIn(selectedEmployee);
-      } else {
-        await timeRecordService.clockOut(selectedEmployee);
-      }
+      if (useSpecifiedTime) {
+        // 時刻指定の場合
+        if (!specifiedTime) {
+          alert('時刻を入力してください');
+          return;
+        }
 
-      const action = clockType === 'in' ? '出勤' : '退勤';
-      alert(`${action}打刻が完了しました`);
+        // 指定時刻をDateオブジェクトに変換
+        const [hours, minutes] = specifiedTime.split(':').map(Number);
+        const specifiedDateTime = new Date();
+        specifiedDateTime.setHours(hours, minutes, 0, 0);
+
+        if (clockType === 'in') {
+          await timeRecordService.clockInWithTime(selectedEmployee, specifiedDateTime.toISOString(), isDirectWork);
+        } else {
+          await timeRecordService.clockOutWithTime(selectedEmployee, specifiedDateTime.toISOString(), isDirectWork);
+        }
+
+        const action = clockType === 'in' ? '出勤' : '退勤';
+        const modeText = isDirectWork ? '（直行・直帰）' : '';
+        alert(`${action}打刻が完了しました${modeText}`);
+      } else {
+        // 通常打刻の場合
+        if (clockType === 'in') {
+          await timeRecordService.clockIn(selectedEmployee);
+        } else {
+          await timeRecordService.clockOut(selectedEmployee);
+        }
+
+        const action = clockType === 'in' ? '出勤' : '退勤';
+        alert(`${action}打刻が完了しました`);
+      }
 
       // 打刻成功後、記録を更新
       if (selectedEmployee && showCalendar) {
@@ -126,52 +149,11 @@ const TimeClock: React.FC = () => {
       alert(`打刻に失敗しました: ${error instanceof Error ? error.message : 'エラーが発生しました'}`);
     } finally {
       setShowConfirmModal(false);
-    }
-  };
-
-  const confirmTimeSpecClockAction = async () => {
-    try {
-      if (!specifiedTime) {
-        alert('時刻を入力してください');
-        return;
-      }
-
-      // 指定時刻をDateオブジェクトに変換
-      const [hours, minutes] = specifiedTime.split(':').map(Number);
-      const specifiedDateTime = new Date();
-      specifiedDateTime.setHours(hours, minutes, 0, 0);
-
-      if (clockType === 'in') {
-        await timeRecordService.clockInWithTime(selectedEmployee, specifiedDateTime.toISOString(), isDirectWork);
-      } else {
-        await timeRecordService.clockOutWithTime(selectedEmployee, specifiedDateTime.toISOString(), isDirectWork);
-      }
-
-      const action = clockType === 'in' ? '出勤' : '退勤';
-      const modeText = isDirectWork ? '（直行・直帰）' : '';
-      alert(`${action}打刻が完了しました${modeText}`);
-
-      // 打刻成功後、記録を更新
-      if (selectedEmployee && showCalendar) {
-        await fetchEmployeeRecords(selectedEmployee);
-      }
-
-      // 今日の記録も更新
-      if (selectedEmployee) {
-        await fetchTodayRecord(selectedEmployee);
-      }
-
-      // 社員選択をリセット
-      setSelectedEmployee('');
-      setTodayRecord(null);
-    } catch (error) {
-      console.error('時刻指定打刻に失敗しました:', error);
-      alert(`時刻指定打刻に失敗しました: ${error instanceof Error ? error.message : 'エラーが発生しました'}`);
-    } finally {
-      setShowTimeSpecModal(false);
+      setUseSpecifiedTime(false);
       setIsDirectWork(false);
     }
   };
+
 
   const selectedEmployeeName = employees.find(emp => emp.employee_id === selectedEmployee)?.name || '';
 
@@ -265,36 +247,18 @@ const TimeClock: React.FC = () => {
 
       {selectedEmployee && (
         <div className="clock-buttons-top">
-          <div className="button-group">
-            <button
-              onClick={() => handleClockAction('in')}
-              className="btn btn-clock-in"
-            >
-              出勤
-            </button>
-            <button
-              onClick={() => handleClockAction('in', true)}
-              className="btn btn-clock-in-spec"
-              title="時刻を指定して出勤（直行など）"
-            >
-              📅出勤
-            </button>
-          </div>
-          <div className="button-group">
-            <button
-              onClick={() => handleClockAction('out')}
-              className="btn btn-clock-out"
-            >
-              退勤
-            </button>
-            <button
-              onClick={() => handleClockAction('out', true)}
-              className="btn btn-clock-out-spec"
-              title="時刻を指定して退勤（直帰など）"
-            >
-              📅退勤
-            </button>
-          </div>
+          <button
+            onClick={() => handleClockAction('in')}
+            className="btn btn-clock-in"
+          >
+            出勤
+          </button>
+          <button
+            onClick={() => handleClockAction('out')}
+            className="btn btn-clock-out"
+          >
+            退勤
+          </button>
         </div>
       )}
 
@@ -350,7 +314,7 @@ const TimeClock: React.FC = () => {
           <div className={`modal ${clockType === 'in' ? 'modal-clock-in' : 'modal-clock-out'}`}>
             <div className={`modal-header ${clockType === 'in' ? 'modal-header-clock-in' : 'modal-header-clock-out'}`}>
               <h3>
-                {clockType === 'in' ? '出勤' : '退勤'}打刻確認
+                {clockType === 'in' ? '出勤' : '退勤'}打刻
                 <span className={clockType === 'in' ? 'operation-in' : 'operation-out'}>
                   {clockType === 'in' ? '出勤' : '退勤'}
                 </span>
@@ -358,9 +322,59 @@ const TimeClock: React.FC = () => {
             </div>
             <div className="modal-body">
               <p>
-                <strong>{selectedEmployeeName}</strong>さんの<strong>{clockType === 'in' ? '出勤' : '退勤'}</strong>を記録しますか？
+                <strong>{selectedEmployeeName}</strong>さんの<strong>{clockType === 'in' ? '出勤' : '退勤'}</strong>を記録します
               </p>
-              <p>時刻: <strong>{currentTime}</strong></p>
+
+              <div style={{ margin: '15px 0' }}>
+                <label style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+                  <input
+                    type="radio"
+                    name="timeMode"
+                    checked={!useSpecifiedTime}
+                    onChange={() => setUseSpecifiedTime(false)}
+                    style={{ marginRight: '8px' }}
+                  />
+                  現在時刻で打刻: <strong>{currentTime}</strong>
+                </label>
+
+                <label style={{ display: 'flex', alignItems: 'center' }}>
+                  <input
+                    type="radio"
+                    name="timeMode"
+                    checked={useSpecifiedTime}
+                    onChange={() => setUseSpecifiedTime(true)}
+                    style={{ marginRight: '8px' }}
+                  />
+                  時刻を指定
+                </label>
+              </div>
+
+              {useSpecifiedTime && (
+                <div style={{ margin: '15px 0', paddingLeft: '20px' }}>
+                  <div style={{ marginBottom: '10px' }}>
+                    <label style={{ display: 'block', marginBottom: '5px' }}>
+                      {clockType === 'in' ? '出勤' : '退勤'}時刻:
+                    </label>
+                    <input
+                      type="time"
+                      value={specifiedTime}
+                      onChange={(e) => setSpecifiedTime(e.target.value)}
+                      style={{ padding: '8px', fontSize: '16px', width: '120px' }}
+                    />
+                  </div>
+                  <div>
+                    <label style={{ display: 'flex', alignItems: 'center' }}>
+                      <input
+                        type="checkbox"
+                        checked={isDirectWork}
+                        onChange={(e) => setIsDirectWork(e.target.checked)}
+                        style={{ marginRight: '8px' }}
+                      />
+                      直行・直帰モード（遅刻・早退判定を無効化）
+                    </label>
+                  </div>
+                </div>
+              )}
             </div>
             <div className="modal-actions">
               <button onClick={() => setShowConfirmModal(false)}>
@@ -368,59 +382,6 @@ const TimeClock: React.FC = () => {
               </button>
               <button
                 onClick={confirmClockAction}
-                className={`btn-primary ${clockType === 'in' ? 'btn-confirm-in' : 'btn-confirm-out'}`}
-              >
-                確認
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {showTimeSpecModal && (
-        <div className="modal-overlay">
-          <div className={`modal ${clockType === 'in' ? 'modal-clock-in' : 'modal-clock-out'}`}>
-            <div className={`modal-header ${clockType === 'in' ? 'modal-header-clock-in' : 'modal-header-clock-out'}`}>
-              <h3>
-                📅時刻指定{clockType === 'in' ? '出勤' : '退勤'}
-                <span className={clockType === 'in' ? 'operation-in' : 'operation-out'}>
-                  {clockType === 'in' ? '出勤' : '退勤'}
-                </span>
-              </h3>
-            </div>
-            <div className="modal-body">
-              <p>
-                <strong>{selectedEmployeeName}</strong>さんの{clockType === 'in' ? '出勤' : '退勤'}時刻を指定してください
-              </p>
-              <div style={{ margin: '15px 0' }}>
-                <label style={{ display: 'block', marginBottom: '5px' }}>
-                  {clockType === 'in' ? '出勤' : '退勤'}時刻:
-                </label>
-                <input
-                  type="time"
-                  value={specifiedTime}
-                  onChange={(e) => setSpecifiedTime(e.target.value)}
-                  style={{ padding: '8px', fontSize: '16px', width: '120px' }}
-                />
-              </div>
-              <div style={{ margin: '15px 0' }}>
-                <label style={{ display: 'flex', alignItems: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={isDirectWork}
-                    onChange={(e) => setIsDirectWork(e.target.checked)}
-                    style={{ marginRight: '8px' }}
-                  />
-                  直行・直帰モード（遅刻・早退判定を無効化）
-                </label>
-              </div>
-            </div>
-            <div className="modal-actions">
-              <button onClick={() => setShowTimeSpecModal(false)}>
-                キャンセル
-              </button>
-              <button
-                onClick={confirmTimeSpecClockAction}
                 className={`btn-primary ${clockType === 'in' ? 'btn-confirm-in' : 'btn-confirm-out'}`}
               >
                 確認
