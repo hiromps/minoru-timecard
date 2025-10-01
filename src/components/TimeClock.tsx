@@ -263,42 +263,40 @@ const TimeClock: React.FC = () => {
         </div>
       )}
 
-      <div className="clock-buttons-top">
-        <div className="button-group">
-          <button
-            onClick={() => handleClockAction('in')}
-            disabled={!selectedEmployee}
-            className="btn btn-clock-in"
-          >
-            出勤
-          </button>
-          <button
-            onClick={() => handleClockAction('in', true)}
-            disabled={!selectedEmployee}
-            className="btn btn-clock-in-spec"
-            title="時刻を指定して出勤（直行など）"
-          >
-            📅出勤
-          </button>
+      {selectedEmployee && (
+        <div className="clock-buttons-top">
+          <div className="button-group">
+            <button
+              onClick={() => handleClockAction('in')}
+              className="btn btn-clock-in"
+            >
+              出勤
+            </button>
+            <button
+              onClick={() => handleClockAction('in', true)}
+              className="btn btn-clock-in-spec"
+              title="時刻を指定して出勤（直行など）"
+            >
+              📅出勤
+            </button>
+          </div>
+          <div className="button-group">
+            <button
+              onClick={() => handleClockAction('out')}
+              className="btn btn-clock-out"
+            >
+              退勤
+            </button>
+            <button
+              onClick={() => handleClockAction('out', true)}
+              className="btn btn-clock-out-spec"
+              title="時刻を指定して退勤（直帰など）"
+            >
+              📅退勤
+            </button>
+          </div>
         </div>
-        <div className="button-group">
-          <button
-            onClick={() => handleClockAction('out')}
-            disabled={!selectedEmployee}
-            className="btn btn-clock-out"
-          >
-            退勤
-          </button>
-          <button
-            onClick={() => handleClockAction('out', true)}
-            disabled={!selectedEmployee}
-            className="btn btn-clock-out-spec"
-            title="時刻を指定して退勤（直帰など）"
-          >
-            📅退勤
-          </button>
-        </div>
-      </div>
+      )}
 
       {selectedEmployee && (
         <div className={`employee-calendar-compact ${!showCalendar ? 'collapsed' : ''}`}>
