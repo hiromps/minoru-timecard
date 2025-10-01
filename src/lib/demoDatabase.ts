@@ -61,25 +61,25 @@ export const demoTimeRecordService = {
   async clockIn(employeeId: string): Promise<TimeRecord> {
     const today = getJSTDate()
     const now = new Date().toISOString()
-    
+
     // 既存の記録をチェック
     const existingIndex = mockTimeRecords.findIndex(
       record => record.employee_id === employeeId && record.record_date === today
     )
-    
+
     if (existingIndex !== -1 && mockTimeRecords[existingIndex].clock_in_time) {
       throw new Error('本日は既に出勤打刻済みです')
     }
-    
+
     const employee = mockEmployees.find(emp => emp.employee_id === employeeId)
     if (!employee) {
       throw new Error('社員が見つかりません')
     }
-    
+
     const clockInTime = new Date(now)
     const workStartTime = new Date(`${today}T${employee.work_start_time}`)
     const status = clockInTime > workStartTime ? '遅刻' : '通常'
-    
+
     const newRecord: TimeRecord = {
       id: Date.now(),
       employee_id: employeeId,
@@ -91,13 +91,13 @@ export const demoTimeRecordService = {
       created_at: now,
       updated_at: now
     }
-    
+
     if (existingIndex !== -1) {
       mockTimeRecords[existingIndex] = { ...mockTimeRecords[existingIndex], ...newRecord }
     } else {
       mockTimeRecords.push(newRecord)
     }
-    
+
     console.log('🔧 デモモード: 出勤打刻しました', employee.name)
     return newRecord
   },
@@ -105,11 +105,11 @@ export const demoTimeRecordService = {
   async clockOut(employeeId: string): Promise<TimeRecord> {
     const today = getJSTDate()
     const now = new Date().toISOString()
-    
+
     const existingIndex = mockTimeRecords.findIndex(
       record => record.employee_id === employeeId && record.record_date === today
     )
-    
+
     if (existingIndex === -1 || !mockTimeRecords[existingIndex].clock_in_time) {
       throw new Error('出勤打刻が見つかりません')
     }
@@ -145,6 +145,101 @@ export const demoTimeRecordService = {
     }
 
     console.log('🔧 デモモード: 退勤打刻しました', employee.name)
+    return mockTimeRecords[existingIndex]
+  },
+
+  async clockInWithTime(employeeId: string, specifiedTime: string, isDirectWork: boolean = false): Promise<TimeRecord> {
+    const clockInTime = new Date(specifiedTime)
+    const today = getJSTDate(clockInTime)
+
+    // 既存の記録をチェック
+    const existingIndex = mockTimeRecords.findIndex(
+      record => record.employee_id === employeeId && record.record_date === today
+    )
+
+    if (existingIndex !== -1 && mockTimeRecords[existingIndex].clock_in_time) {
+      throw new Error('本日は既に出勤打刻済みです')
+    }
+
+    const employee = mockEmployees.find(emp => emp.employee_id === employeeId)
+    if (!employee) {
+      throw new Error('社員が見つかりません')
+    }
+
+    // ステータス判定（直行・直帰モードの場合は通常固定）
+    let status = '通常'
+    if (!isDirectWork) {
+      const workStartTime = new Date(`${today}T${employee.work_start_time}`)
+      status = clockInTime > workStartTime ? '遅刻' : '通常'
+    }
+
+    const newRecord: TimeRecord = {
+      id: Date.now(),
+      employee_id: employeeId,
+      record_date: today,
+      clock_in_time: specifiedTime,
+      clock_out_time: null,
+      status,
+      work_hours: 0,
+      created_at: new Date().toISOString(),
+      updated_at: new Date().toISOString()
+    }
+
+    if (existingIndex !== -1) {
+      mockTimeRecords[existingIndex] = { ...mockTimeRecords[existingIndex], ...newRecord }
+    } else {
+      mockTimeRecords.push(newRecord)
+    }
+
+    console.log('🔧 デモモード: 時刻指定出勤打刻しました', employee.name, isDirectWork ? '(直行)' : '')
+    return newRecord
+  },
+
+  async clockOutWithTime(employeeId: string, specifiedTime: string, isDirectWork: boolean = false): Promise<TimeRecord> {
+    const clockOutTime = new Date(specifiedTime)
+    const today = getJSTDate(clockOutTime)
+
+    const existingIndex = mockTimeRecords.findIndex(
+      record => record.employee_id === employeeId && record.record_date === today
+    )
+
+    if (existingIndex === -1 || !mockTimeRecords[existingIndex].clock_in_time) {
+      throw new Error('出勤打刻が見つかりません')
+    }
+
+    if (mockTimeRecords[existingIndex].clock_out_time) {
+      throw new Error('本日は既に退勤打刻済みです')
+    }
+
+    const employee = mockEmployees.find(emp => emp.employee_id === employeeId)
+    if (!employee) {
+      throw new Error('社員が見つかりません')
+    }
+
+    const clockInTime = new Date(mockTimeRecords[existingIndex].clock_in_time!)
+    const workHours = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60)
+
+    // ステータス判定（直行・直帰モードの場合は出勤時のステータスを維持）
+    let status = mockTimeRecords[existingIndex].status
+    if (!isDirectWork) {
+      const workEndTime = new Date(`${today}T${employee.work_end_time}`)
+
+      if (clockOutTime < workEndTime && mockTimeRecords[existingIndex].status === '通常') {
+        status = '早退'
+      } else if (workHours > 8 && mockTimeRecords[existingIndex].status === '通常') {
+        status = '残業'
+      }
+    }
+
+    mockTimeRecords[existingIndex] = {
+      ...mockTimeRecords[existingIndex],
+      clock_out_time: specifiedTime,
+      work_hours: Math.round(workHours * 100) / 100,
+      status,
+      updated_at: new Date().toISOString()
+    }
+
+    console.log('🔧 デモモード: 時刻指定退勤打刻しました', employee.name, isDirectWork ? '(直帰)' : '')
     return mockTimeRecords[existingIndex]
   },
 

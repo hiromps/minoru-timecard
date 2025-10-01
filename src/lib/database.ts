@@ -186,12 +186,12 @@ export const timeRecordService = {
   // 退勤打刻
   async clockOut(employeeId: string): Promise<TimeRecord> {
     console.log('🌙 退勤打刻開始:', { employeeId, isDevMode })
-    
+
     if (isDevMode) {
       console.log('🔧 デモモードで退勤打刻処理')
       return demoTimeRecordService.clockOut(employeeId)
     }
-    
+
     console.log('🏭 本番モードで退勤打刻処理')
 
     const employee = await employeeService.findByEmployeeId(employeeId)
@@ -210,7 +210,7 @@ export const timeRecordService = {
       .eq('employee_id', employeeId)
       .eq('record_date', today)
       .single()
-    
+
     if (fetchError || !todayRecord) {
       throw new Error('本日の出勤記録が見つかりません')
     }
@@ -219,10 +219,10 @@ export const timeRecordService = {
     const clockInTime = new Date(todayRecord.clock_in_time!)
     const clockOutTime = now
     const workHours = Math.round((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60) * 100) / 100
-    
+
     const workEndTime = new Date(`${today}T${employee.work_end_time}`)
     let finalStatus = todayRecord.status
-    
+
     if (now < workEndTime && todayRecord.status === '通常') {
       finalStatus = '早退'
     } else if (now > workEndTime && todayRecord.status === '通常') {
@@ -246,14 +246,146 @@ export const timeRecordService = {
       .eq('id', todayRecord.id)
       .select()
       .single()
-    
+
     if (error) {
       console.error('❌ 退勤打刻エラー:', error)
       console.error('❌ エラー詳細:', JSON.stringify(error, null, 2))
       throw error
     }
-    
+
     console.log('✅ 退勤打刻成功:', data)
+    return data
+  },
+
+  // 時刻指定出勤打刻
+  async clockInWithTime(employeeId: string, specifiedTime: string, isDirectWork: boolean = false): Promise<TimeRecord> {
+    console.log('⏰ 時刻指定出勤打刻開始:', { employeeId, specifiedTime, isDirectWork, isDevMode })
+
+    if (isDevMode) {
+      console.log('🔧 デモモードで時刻指定出勤打刻処理')
+      return demoTimeRecordService.clockInWithTime(employeeId, specifiedTime, isDirectWork)
+    }
+
+    console.log('🏭 本番モードで時刻指定出勤打刻処理')
+
+    const employee = await employeeService.findByEmployeeId(employeeId)
+    if (!employee) {
+      throw new Error('社員が見つかりません')
+    }
+
+    const clockInTime = new Date(specifiedTime)
+    const today = getJSTDate(clockInTime)
+
+    // ステータス判定（直行・直帰モードの場合は通常固定）
+    let status = '通常'
+    if (!isDirectWork) {
+      const workStartTime = new Date(`${today}T${employee.work_start_time}`)
+      status = clockInTime > workStartTime ? '遅刻' : '通常'
+    }
+
+    console.log('📝 時刻指定出勤データ挿入開始:', {
+      employee_id: employeeId,
+      record_date: today,
+      clock_in_time: specifiedTime,
+      status: status,
+      work_hours: 0,
+      is_direct_work: isDirectWork
+    })
+
+    const { data, error } = await supabase
+      .from('time_records')
+      .insert({
+        employee_id: employeeId,
+        record_date: today,
+        clock_in_time: specifiedTime,
+        status: status,
+        work_hours: 0
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error('❌ 時刻指定出勤打刻エラー:', error)
+      console.error('❌ エラー詳細:', JSON.stringify(error, null, 2))
+      throw error
+    }
+
+    console.log('✅ 時刻指定出勤打刻成功:', data)
+    return data
+  },
+
+  // 時刻指定退勤打刻
+  async clockOutWithTime(employeeId: string, specifiedTime: string, isDirectWork: boolean = false): Promise<TimeRecord> {
+    console.log('🌙 時刻指定退勤打刻開始:', { employeeId, specifiedTime, isDirectWork, isDevMode })
+
+    if (isDevMode) {
+      console.log('🔧 デモモードで時刻指定退勤打刻処理')
+      return demoTimeRecordService.clockOutWithTime(employeeId, specifiedTime, isDirectWork)
+    }
+
+    console.log('🏭 本番モードで時刻指定退勤打刻処理')
+
+    const employee = await employeeService.findByEmployeeId(employeeId)
+    if (!employee) {
+      throw new Error('社員が見つかりません')
+    }
+
+    const clockOutTime = new Date(specifiedTime)
+    const today = getJSTDate(clockOutTime)
+
+    // 本日の出勤記録を取得
+    const { data: todayRecord, error: fetchError } = await supabase
+      .from('time_records')
+      .select('*')
+      .eq('employee_id', employeeId)
+      .eq('record_date', today)
+      .single()
+
+    if (fetchError || !todayRecord) {
+      throw new Error('本日の出勤記録が見つかりません')
+    }
+
+    // 勤務時間とステータスを計算
+    const clockInTime = new Date(todayRecord.clock_in_time!)
+    const workHours = Math.round((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60) * 100) / 100
+
+    // ステータス判定（直行・直帰モードの場合は出勤時のステータスを維持）
+    let finalStatus = todayRecord.status
+    if (!isDirectWork) {
+      const workEndTime = new Date(`${today}T${employee.work_end_time}`)
+
+      if (clockOutTime < workEndTime && todayRecord.status === '通常') {
+        finalStatus = '早退'
+      } else if (clockOutTime > workEndTime && todayRecord.status === '通常') {
+        finalStatus = '残業'
+      }
+    }
+
+    console.log('📝 時刻指定退勤データ更新開始:', {
+      id: todayRecord.id,
+      clock_out_time: specifiedTime,
+      work_hours: workHours,
+      status: finalStatus
+    })
+
+    const { data, error } = await supabase
+      .from('time_records')
+      .update({
+        clock_out_time: specifiedTime,
+        work_hours: workHours,
+        status: finalStatus
+      })
+      .eq('id', todayRecord.id)
+      .select()
+      .single()
+
+    if (error) {
+      console.error('❌ 時刻指定退勤打刻エラー:', error)
+      console.error('❌ エラー詳細:', JSON.stringify(error, null, 2))
+      throw error
+    }
+
+    console.log('✅ 時刻指定退勤打刻成功:', data)
     return data
   },
 
