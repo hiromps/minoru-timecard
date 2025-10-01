@@ -277,7 +277,7 @@ export const timeRecordService = {
     const today = getJSTDate(clockInTime)
 
     // ステータス判定（直行・直帰モードの場合は通常固定）
-    let status = '通常'
+    let status: '通常' | '遅刻' | '早退' | '残業' = '通常'
     if (!isDirectWork) {
       const workStartTime = new Date(`${today}T${employee.work_start_time}`)
       status = clockInTime > workStartTime ? '遅刻' : '通常'
@@ -350,7 +350,7 @@ export const timeRecordService = {
     const workHours = Math.round((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60) * 100) / 100
 
     // ステータス判定（直行・直帰モードの場合は出勤時のステータスを維持）
-    let finalStatus = todayRecord.status
+    let finalStatus: '通常' | '遅刻' | '早退' | '残業' = todayRecord.status
     if (!isDirectWork) {
       const workEndTime = new Date(`${today}T${employee.work_end_time}`)
 

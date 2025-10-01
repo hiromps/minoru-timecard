@@ -167,7 +167,7 @@ export const demoTimeRecordService = {
     }
 
     // ステータス判定（直行・直帰モードの場合は通常固定）
-    let status = '通常'
+    let status: '通常' | '遅刻' | '早退' | '残業' = '通常'
     if (!isDirectWork) {
       const workStartTime = new Date(`${today}T${employee.work_start_time}`)
       status = clockInTime > workStartTime ? '遅刻' : '通常'
@@ -220,7 +220,7 @@ export const demoTimeRecordService = {
     const workHours = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60)
 
     // ステータス判定（直行・直帰モードの場合は出勤時のステータスを維持）
-    let status = mockTimeRecords[existingIndex].status
+    let status: '通常' | '遅刻' | '早退' | '残業' = mockTimeRecords[existingIndex].status
     if (!isDirectWork) {
       const workEndTime = new Date(`${today}T${employee.work_end_time}`)
 
