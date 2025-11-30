@@ -3,6 +3,7 @@ import './TimeClock.css';
 import { Employee, TimeRecord } from '../lib/supabase';
 import { employeeService, timeRecordService } from '../lib/database';
 import { formatWorkHours } from '../utils/timeUtils';
+import { localDateTimeToISO } from '../utils/dateUtils';
 
 const TimeClock: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -105,15 +106,15 @@ const TimeClock: React.FC = () => {
           return;
         }
 
-        // 指定時刻をDateオブジェクトに変換
-        const [hours, minutes] = specifiedTime.split(':').map(Number);
-        const specifiedDateTime = new Date();
-        specifiedDateTime.setHours(hours, minutes, 0, 0);
+        // 指定時刻をISO形式に変換（タイムゾーンを考慮）
+        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        const datetimeLocal = `${today}T${specifiedTime}`; // YYYY-MM-DDTHH:MM
+        const isoTime = localDateTimeToISO(datetimeLocal);
 
         if (clockType === 'in') {
-          await timeRecordService.clockInWithTime(selectedEmployee, specifiedDateTime.toISOString(), isDirectWork);
+          await timeRecordService.clockInWithTime(selectedEmployee, isoTime, isDirectWork);
         } else {
-          await timeRecordService.clockOutWithTime(selectedEmployee, specifiedDateTime.toISOString(), isDirectWork);
+          await timeRecordService.clockOutWithTime(selectedEmployee, isoTime, isDirectWork);
         }
 
         const action = clockType === 'in' ? '出勤' : '退勤';
@@ -218,11 +219,19 @@ const TimeClock: React.FC = () => {
                 <span className="date-label">本日</span>
                 <span className="date-value">{new Date().toLocaleDateString('ja-JP')}</span>
               </div>
-              <div className={`status-badge-today status-${todayRecord.status === '通常' ? 'normal' : todayRecord.status === '遅刻' ? 'late' : todayRecord.status === '早退' ? 'early' : 'overtime'}`}>
-                {todayRecord.status === '通常' ? '✅ 通常' : 
-                 todayRecord.status === '遅刻' ? '⚠️ 遅刻' : 
-                 todayRecord.status === '早退' ? '🏃 早退' : 
-                 '💪 残業'}
+              <div className={`status-badge-today status-${
+                todayRecord.status === '通常' ? 'normal' :
+                todayRecord.status.includes('遅刻') ? 'late' :
+                todayRecord.status.includes('早退') ? 'early' :
+                todayRecord.status.includes('残業') ? 'overtime' : 'normal'
+              }`}>
+                {todayRecord.status === '通常' ? '✅ 通常' :
+                 todayRecord.status === '遅刻' ? '⚠️ 遅刻' :
+                 todayRecord.status === '早退' ? '🏃 早退' :
+                 todayRecord.status === '残業' ? '💪 残業' :
+                 todayRecord.status === '遅刻・早退' ? '⚠️🏃 遅刻・早退' :
+                 todayRecord.status === '遅刻・残業' ? '⚠️💪 遅刻・残業' :
+                 todayRecord.status}
               </div>
             </div>
             <div className="time-info-row">
@@ -278,11 +287,19 @@ const TimeClock: React.FC = () => {
                   <div key={record.id} className="record-item-compact">
                     <div className="record-header">
                       <div className="record-date">{formatDate(record.record_date)}</div>
-                      <div className={`record-status status-${record.status === '通常' ? 'normal' : record.status === '遅刻' ? 'late' : record.status === '早退' ? 'early' : 'overtime'}`}>
-                        {record.status === '通常' ? '✅ 通常' : 
-                         record.status === '遅刻' ? '⚠️ 遅刻' : 
-                         record.status === '早退' ? '🏃 早退' : 
-                         '💪 残業'}
+                      <div className={`record-status status-${
+                        record.status === '通常' ? 'normal' :
+                        record.status.includes('遅刻') ? 'late' :
+                        record.status.includes('早退') ? 'early' :
+                        record.status.includes('残業') ? 'overtime' : 'normal'
+                      }`}>
+                        {record.status === '通常' ? '✅ 通常' :
+                         record.status === '遅刻' ? '⚠️ 遅刻' :
+                         record.status === '早退' ? '🏃 早退' :
+                         record.status === '残業' ? '💪 残業' :
+                         record.status === '遅刻・早退' ? '⚠️🏃 遅刻・早退' :
+                         record.status === '遅刻・残業' ? '⚠️💪 遅刻・残業' :
+                         record.status}
                       </div>
                     </div>
                     <div className="record-body">

@@ -44,20 +44,24 @@ export const getJSTDateFromISO = (isoString: string): string => {
 };
 
 /**
- * ローカル日時をISO形式に変換（日本時間考慮）
+ * ローカル日時をISO形式に変換（日本時間として扱う）
+ * 入力を常に日本時間（JST = UTC+9）として解釈し、UTCに変換する
  * @param {string} datetimeLocal - YYYY-MM-DDTHH:MM形式の文字列
- * @returns {string} ISO形式の日時文字列
+ * @returns {string} ISO形式の日時文字列（UTC）
  */
 export const localDateTimeToISO = (datetimeLocal: string): string => {
   if (!datetimeLocal) return '';
-  // 日本時間として扱い、UTCに変換
-  const localDate = new Date(datetimeLocal);
-  // ブラウザのタイムゾーンが日本時間でない場合の調整
-  const jstOffset = 9 * 60; // JST is UTC+9
-  const tzOffset = localDate.getTimezoneOffset(); // ブラウザのタイムゾーンオフセット（分）
-  const diffMinutes = jstOffset * 60 + tzOffset; // JSTとの差分
-  
-  // 差分を適用してISO文字列を返す
-  const adjustedDate = new Date(localDate.getTime() - diffMinutes * 60 * 1000);
-  return adjustedDate.toISOString();
+
+  // 入力文字列を直接パースして、常にJSTとして扱う
+  // 形式: "YYYY-MM-DDTHH:MM" または "YYYY-MM-DD HH:MM"
+  const normalized = datetimeLocal.replace(' ', 'T');
+  const [datePart, timePart] = normalized.split('T');
+  const [year, month, day] = datePart.split('-').map(Number);
+  const [hours, minutes] = (timePart || '00:00').split(':').map(Number);
+
+  // JST時刻からUTCを計算（JSTはUTC+9）
+  // Date.UTC()はタイムゾーンに依存しないUTCタイムスタンプを返す
+  // JSTからUTCに変換するため、9時間分のミリ秒を引く
+  const utcTimestamp = Date.UTC(year, month - 1, day, hours, minutes, 0, 0) - (9 * 60 * 60 * 1000);
+  return new Date(utcTimestamp).toISOString();
 };
