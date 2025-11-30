@@ -1,4 +1,4 @@
-import { Employee, TimeRecord } from './supabase'
+import { Employee, TimeRecord, TimeRecordStatus } from './supabase'
 import { mockEmployees, mockTimeRecords } from './mockData'
 import { getJSTDate } from '../utils/dateUtils'
 
@@ -128,12 +128,24 @@ export const demoTimeRecordService = {
     const workHours = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60)
 
     const workEndTime = new Date(`${today}T${employee.work_end_time}`)
-    let status = mockTimeRecords[existingIndex].status
+    const isLate = mockTimeRecords[existingIndex].status === '遅刻'
+    const isEarlyLeave = clockOutTime < workEndTime
+    const isOvertime = clockOutTime > workEndTime
 
-    if (clockOutTime < workEndTime) {
+    // 複合ステータス対応
+    let status: TimeRecordStatus
+    if (isLate && isEarlyLeave) {
+      status = '遅刻・早退'
+    } else if (isLate && isOvertime) {
+      status = '遅刻・残業'
+    } else if (isEarlyLeave) {
       status = '早退'
-    } else if (workHours > 8) {
+    } else if (isOvertime) {
       status = '残業'
+    } else if (isLate) {
+      status = '遅刻'
+    } else {
+      status = '通常'
     }
 
     mockTimeRecords[existingIndex] = {
@@ -167,7 +179,7 @@ export const demoTimeRecordService = {
     }
 
     // ステータス判定（直行・直帰モードの場合は通常固定）
-    let status: '通常' | '遅刻' | '早退' | '残業' = '通常'
+    let status: TimeRecordStatus = '通常'
     if (!isDirectWork) {
       const workStartTime = new Date(`${today}T${employee.work_start_time}`)
       status = clockInTime > workStartTime ? '遅刻' : '通常'
@@ -220,14 +232,26 @@ export const demoTimeRecordService = {
     const workHours = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60)
 
     // ステータス判定（直行・直帰モードの場合は出勤時のステータスを維持）
-    let status: '通常' | '遅刻' | '早退' | '残業' = mockTimeRecords[existingIndex].status
+    let status: TimeRecordStatus = mockTimeRecords[existingIndex].status
     if (!isDirectWork) {
       const workEndTime = new Date(`${today}T${employee.work_end_time}`)
+      const isLate = mockTimeRecords[existingIndex].status === '遅刻'
+      const isEarlyLeave = clockOutTime < workEndTime
+      const isOvertime = clockOutTime > workEndTime
 
-      if (clockOutTime < workEndTime && mockTimeRecords[existingIndex].status === '通常') {
+      // 複合ステータス対応
+      if (isLate && isEarlyLeave) {
+        status = '遅刻・早退'
+      } else if (isLate && isOvertime) {
+        status = '遅刻・残業'
+      } else if (isEarlyLeave) {
         status = '早退'
-      } else if (workHours > 8 && mockTimeRecords[existingIndex].status === '通常') {
+      } else if (isOvertime) {
         status = '残業'
+      } else if (isLate) {
+        status = '遅刻'
+      } else {
+        status = '通常'
       }
     }
 

@@ -1,4 +1,4 @@
-import { supabase, Employee, TimeRecord, isDevMode } from './supabase'
+import { supabase, Employee, TimeRecord, TimeRecordStatus, isDevMode } from './supabase'
 import { demoEmployeeService, demoTimeRecordService } from './demoDatabase'
 import { getJSTDate, getJSTMonthRange } from '../utils/dateUtils'
 
@@ -151,7 +151,7 @@ export const timeRecordService = {
     
     // ステータス判定
     const workStartTime = new Date(`${today}T${employee.work_start_time}`)
-    const status = now > workStartTime ? '遅刻' : '通常'
+    const status: TimeRecordStatus = now > workStartTime ? '遅刻' : '通常'
 
     console.log('📝 出勤データ挿入開始:', {
       employee_id: employeeId,
@@ -221,12 +221,24 @@ export const timeRecordService = {
     const workHours = Math.round((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60) * 100) / 100
 
     const workEndTime = new Date(`${today}T${employee.work_end_time}`)
-    let finalStatus = todayRecord.status
+    const isLate = todayRecord.status === '遅刻'
+    const isEarlyLeave = now < workEndTime
+    const isOvertime = now > workEndTime
 
-    if (now < workEndTime && todayRecord.status === '通常') {
+    // 複合ステータス対応
+    let finalStatus: TimeRecordStatus
+    if (isLate && isEarlyLeave) {
+      finalStatus = '遅刻・早退'
+    } else if (isLate && isOvertime) {
+      finalStatus = '遅刻・残業'
+    } else if (isEarlyLeave) {
       finalStatus = '早退'
-    } else if (now > workEndTime && todayRecord.status === '通常') {
+    } else if (isOvertime) {
       finalStatus = '残業'
+    } else if (isLate) {
+      finalStatus = '遅刻'
+    } else {
+      finalStatus = '通常'
     }
 
     console.log('📝 退勤データ更新開始:', {
@@ -277,7 +289,7 @@ export const timeRecordService = {
     const today = getJSTDate(clockInTime)
 
     // ステータス判定（直行・直帰モードの場合は通常固定）
-    let status: '通常' | '遅刻' | '早退' | '残業' = '通常'
+    let status: TimeRecordStatus = '通常'
     if (!isDirectWork) {
       const workStartTime = new Date(`${today}T${employee.work_start_time}`)
       status = clockInTime > workStartTime ? '遅刻' : '通常'
@@ -350,14 +362,26 @@ export const timeRecordService = {
     const workHours = Math.round((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60) * 100) / 100
 
     // ステータス判定（直行・直帰モードの場合は出勤時のステータスを維持）
-    let finalStatus: '通常' | '遅刻' | '早退' | '残業' = todayRecord.status
+    let finalStatus: TimeRecordStatus = todayRecord.status
     if (!isDirectWork) {
       const workEndTime = new Date(`${today}T${employee.work_end_time}`)
+      const isLate = todayRecord.status === '遅刻'
+      const isEarlyLeave = clockOutTime < workEndTime
+      const isOvertime = clockOutTime > workEndTime
 
-      if (clockOutTime < workEndTime && todayRecord.status === '通常') {
+      // 複合ステータス対応
+      if (isLate && isEarlyLeave) {
+        finalStatus = '遅刻・早退'
+      } else if (isLate && isOvertime) {
+        finalStatus = '遅刻・残業'
+      } else if (isEarlyLeave) {
         finalStatus = '早退'
-      } else if (clockOutTime > workEndTime && todayRecord.status === '通常') {
+      } else if (isOvertime) {
         finalStatus = '残業'
+      } else if (isLate) {
+        finalStatus = '遅刻'
+      } else {
+        finalStatus = '通常'
       }
     }
 

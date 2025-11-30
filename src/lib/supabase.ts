@@ -115,13 +115,23 @@ export interface Employee {
   updated_at: string
 }
 
+// ステータス型定義（複合ステータス対応）
+export type TimeRecordStatus =
+  | '通常'
+  | '遅刻'
+  | '早退'
+  | '残業'
+  | '遅刻・早退'
+  | '遅刻・残業'
+  | '設定エラー'
+
 export interface TimeRecord {
   id: number
   employee_id: string
   record_date: string
   clock_in_time: string | null
   clock_out_time: string | null
-  status: '通常' | '遅刻' | '早退' | '残業'
+  status: TimeRecordStatus
   work_hours: number
   created_at: string
   updated_at: string

@@ -1,6 +1,7 @@
 import { Request, Response } from 'express';
 import sqlite3 from 'sqlite3';
 import path from 'path';
+import { determineStatus } from '../utils/statusUtils';
 
 const dbPath = path.join(__dirname, '../../timecard.db');
 
@@ -117,11 +118,11 @@ const handleDeleteAndCreate = (
             work_hours = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60 * 60); // 時間単位
 
             // 統一されたステータス判定ロジックを使用
-            status = determineNewStatus(clockIn, clockOut, employee.work_start_time, employee.work_end_time);
+            status = determineStatus(clockIn, clockOut, employee.work_start_time, employee.work_end_time);
           } else if (clock_in_time) {
             // 出勤のみの場合
             const clockIn = new Date(clock_in_time);
-            status = determineNewStatus(clockIn, null, employee.work_start_time, employee.work_end_time);
+            status = determineStatus(clockIn, null, employee.work_start_time, employee.work_end_time);
           }
 
           // 新しいレコードを作成
@@ -193,11 +194,11 @@ const handleUpdate = (
         work_hours = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60 * 60);
 
         // 統一されたステータス判定ロジックを使用
-        status = determineNewStatus(clockIn, clockOut, employee.work_start_time, employee.work_end_time);
+        status = determineStatus(clockIn, clockOut, employee.work_start_time, employee.work_end_time);
       } else if (clock_in_time) {
         // 出勤のみの場合
         const clockIn = new Date(clock_in_time);
-        status = determineNewStatus(clockIn, null, employee.work_start_time, employee.work_end_time);
+        status = determineStatus(clockIn, null, employee.work_start_time, employee.work_end_time);
       }
 
       // レコードを更新
@@ -430,7 +431,7 @@ export const recalculateAllStatuses = (req: Request, res: Response) => {
       const clockOutTime = new Date(record.clock_out_time);
 
       // ステータス再計算
-      const newStatus = determineNewStatus(clockInTime, clockOutTime,
+      const newStatus = determineStatus(clockInTime, clockOutTime,
         record.work_start_time, record.work_end_time);
 
       // 勤務時間再計算
@@ -469,115 +470,4 @@ export const recalculateAllStatuses = (req: Request, res: Response) => {
   });
 };
 
-// ステータス判定ロジック（再計算用・動的組み合わせ対応）
-const determineNewStatus = (clockInTime: Date, clockOutTime: Date | null, workStartTime: string, workEndTime: string): string => {
-  // 時間データの検証とログ
-  console.log('=== 再計算用ステータス判定 ===');
-  console.log('clockInTime:', clockInTime);
-  console.log('clockOutTime:', clockOutTime);
-  console.log('workStartTime:', workStartTime);
-  console.log('workEndTime:', workEndTime);
-
-  // Dateオブジェクトの確実な変換
-  let actualClockIn: Date;
-  if (clockInTime instanceof Date) {
-    actualClockIn = clockInTime;
-  } else {
-    actualClockIn = new Date(clockInTime);
-  }
-
-  let actualClockOut: Date | null = null;
-  if (clockOutTime) {
-    if (clockOutTime instanceof Date) {
-      actualClockOut = clockOutTime;
-    } else {
-      actualClockOut = new Date(clockOutTime);
-    }
-  }
-
-  // JST時刻で計算
-  const clockInHour = actualClockIn.getHours();
-  const clockInMinute = actualClockIn.getMinutes();
-  const clockInTotalMinutes = clockInHour * 60 + clockInMinute;
-
-  // 個別出勤時間との比較（入力検証追加）
-  if (!workStartTime || !workStartTime.includes(':')) {
-    console.error('❌ workStartTime が無効:', workStartTime);
-    return '設定エラー';
-  }
-
-  const [workStartHour, workStartMinute] = workStartTime.split(':').map(Number);
-  if (isNaN(workStartHour) || isNaN(workStartMinute)) {
-    console.error('❌ workStartTime パース失敗:', workStartTime);
-    return '設定エラー';
-  }
-  const workStartTotalMinutes = workStartHour * 60 + workStartMinute;
-
-  // 個別退勤時間
-  if (!workEndTime || !workEndTime.includes(':')) {
-    console.error('❌ workEndTime が無効:', workEndTime);
-    return '設定エラー';
-  }
-
-  const [workEndHour, workEndMinute] = workEndTime.split(':').map(Number);
-  if (isNaN(workEndHour) || isNaN(workEndMinute)) {
-    console.error('❌ workEndTime パース失敗:', workEndTime);
-    return '設定エラー';
-  }
-  const workEndTotalMinutes = workEndHour * 60 + workEndMinute;
-
-  // デバッグログ（詳細な判定情報）
-  console.log('=== ステータス判定詳細 ===');
-  console.log(`出勤時刻: ${clockInHour}:${clockInMinute.toString().padStart(2, '0')} (${clockInTotalMinutes}分)`);
-  console.log(`設定出勤: ${workStartTime} (${workStartTotalMinutes}分)`);
-  console.log(`設定退勤: ${workEndTime} (${workEndTotalMinutes}分)`);
-
-  // 各種判定フラグ
-  const isLate = clockInTotalMinutes > workStartTotalMinutes;
-  let isEarlyLeave = false;
-  let isOvertime = false;
-
-  console.log(`遅刻判定: ${clockInTotalMinutes} > ${workStartTotalMinutes} = ${isLate}`);
-
-  // 退勤時間がある場合の追加判定
-  if (actualClockOut) {
-    const clockOutHour = actualClockOut.getHours();
-    const clockOutMinute = actualClockOut.getMinutes();
-    const clockOutTotalMinutes = clockOutHour * 60 + clockOutMinute;
-    console.log(`退勤時刻: ${clockOutHour}:${clockOutMinute.toString().padStart(2, '0')} (${clockOutTotalMinutes}分)`);
-
-    isEarlyLeave = clockOutTotalMinutes < workEndTotalMinutes;
-    isOvertime = clockOutTotalMinutes > workEndTotalMinutes;
-
-    console.log(`早退判定: ${clockOutTotalMinutes} < ${workEndTotalMinutes} = ${isEarlyLeave}`);
-    console.log(`残業判定: ${clockOutTotalMinutes} > ${workEndTotalMinutes} = ${isOvertime}`);
-  } else {
-    console.log('退勤時刻: 未退勤');
-  }
-
-  // 動的ステータス組み合わせ
-  const statusParts: string[] = [];
-
-  // 優先順位に従ってステータスを追加
-  if (isLate) {
-    statusParts.push('遅刻');
-    console.log('✓ 遅刻ステータス追加');
-  }
-
-  if (actualClockOut) { // 退勤済みの場合のみ退勤関連ステータスを判定
-    if (isEarlyLeave) {
-      statusParts.push('早退');
-      console.log('✓ 早退ステータス追加');
-    } else if (isOvertime) {
-      statusParts.push('残業');
-      console.log('✓ 残業ステータス追加');
-    }
-  }
-
-  // ステータスが複数ある場合は「・」で結合、なければ「通常」
-  const finalStatus = statusParts.length > 0 ? statusParts.join('・') : '通常';
-  console.log(`最終ステータス: "${finalStatus}"`);
-  console.log('=========================\n');
-
-  return finalStatus;
-};
+// ステータス判定ロジックは ../utils/statusUtils.ts に統一されました

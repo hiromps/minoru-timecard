@@ -2,17 +2,19 @@
  * 勤務時間とステータス判定のユーティリティ関数
  */
 
+import { TimeRecordStatus } from '../lib/supabase';
+
 export interface WorkTimeResult {
   actualWorkHours: number;
-  status: '通常' | '遅刻' | '早退' | '残業' | '遅刻・残業';
+  status: TimeRecordStatus;
 }
 
 /**
  * 勤務時間とステータスを計算
  * @param clockInTime 出勤時刻 (ISO string)
  * @param clockOutTime 退勤時刻 (ISO string)
- * @param workStartTime 労働開始時刻 (例: "09:00:00")
- * @param workEndTime 労働終了時刻 (例: "17:00:00")
+ * @param workStartTime 労働開始時刻 (例: "09:00:00" または "09:00")
+ * @param workEndTime 労働終了時刻 (例: "17:00:00" または "17:00")
  * @returns 実労働時間とステータス
  */
 export const calculateWorkTimeAndStatus = (
@@ -34,48 +36,31 @@ export const calculateWorkTimeAndStatus = (
   const workStart = new Date(`${today} ${workStartTime}`);
   const workEnd = new Date(`${today} ${workEndTime}`);
 
-  // 設定値（分単位）
-  const EARLY_ARRIVAL_BUFFER = 60; // 1時間前から出勤可能（8:00から）
-  const LATE_DEPARTURE_BUFFER = 0; // 猶予時間なし（1分でも超過したら残業）
-  const STANDARD_WORK_MINUTES = 8 * 60; // 標準労働時間8時間
-
-  // 出勤判定
-  const earliestAllowedArrival = new Date(workStart.getTime() - EARLY_ARRIVAL_BUFFER * 60 * 1000);
+  // 遅刻判定：出勤時刻 > 設定された出勤時刻
   const isLate = clockIn > workStart;
 
   // 退勤していない場合
   if (!clockOut) {
-    return { 
-      actualWorkHours: 0, 
+    return {
+      actualWorkHours: 0,
       status: isLate ? '遅刻' : '通常'
     };
   }
 
-  // 実際の労働時間計算
-  let actualWorkStart = clockIn;
-  let actualWorkEnd = clockOut;
-
-  // 早退判定用の猶予時間付き終了時刻
-  const workEndWithBuffer = new Date(workEnd.getTime() + LATE_DEPARTURE_BUFFER * 60 * 1000);
-
-  // 実労働時間の計算
-  // 労働開始時刻より早く来た場合は、労働開始時刻から計算
-  if (clockIn < workStart) {
-    actualWorkStart = workStart;
-  }
-
-  // 労働時間を分単位で計算
-  const actualWorkMinutes = Math.max(0, (actualWorkEnd.getTime() - actualWorkStart.getTime()) / (1000 * 60));
+  // 実労働時間の計算（出勤から退勤まで）
+  const actualWorkMinutes = Math.max(0, (clockOut.getTime() - clockIn.getTime()) / (1000 * 60));
   const actualWorkHours = Math.round((actualWorkMinutes / 60) * 100) / 100;
 
-  // ステータス判定
+  // 早退判定：退勤時刻 < 設定された退勤時刻
   const isEarlyDeparture = clockOut < workEnd;
-  
-  // 17:15以降の退勤は残業（1分単位で判定）
-  const overtimeThreshold = new Date(`${today} 17:15:00`);
-  const isOvertime = clockOut >= overtimeThreshold;
 
-  if (isLate && isOvertime) {
+  // 残業判定：退勤時刻 > 設定された退勤時刻
+  const isOvertime = clockOut > workEnd;
+
+  // 複合ステータス対応
+  if (isLate && isEarlyDeparture) {
+    return { actualWorkHours, status: '遅刻・早退' };
+  } else if (isLate && isOvertime) {
     return { actualWorkHours, status: '遅刻・残業' };
   } else if (isLate) {
     return { actualWorkHours, status: '遅刻' };
