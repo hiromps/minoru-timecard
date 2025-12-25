@@ -1,6 +1,7 @@
 import { Employee, TimeRecord, TimeRecordStatus } from './supabase'
 import { mockEmployees, mockTimeRecords } from './mockData'
 import { getJSTDate } from '../utils/dateUtils'
+import { getRegularEndMinutes, minutesToTime } from '../utils/overtimeCalculator'
 
 // デモ環境用のデータベースサービス
 export const demoEmployeeService = {
@@ -28,7 +29,7 @@ export const demoEmployeeService = {
   async update(id: number, employee: Partial<Employee>): Promise<Employee> {
     const index = mockEmployees.findIndex(emp => emp.id === id)
     if (index === -1) throw new Error('社員が見つかりません')
-    
+
     const updatedEmployee: Employee = {
       ...mockEmployees[index],
       ...(employee.employee_id !== undefined && { employee_id: employee.employee_id }),
@@ -38,7 +39,7 @@ export const demoEmployeeService = {
       ...(employee.work_end_time !== undefined && { work_end_time: employee.work_end_time }),
       updated_at: new Date().toISOString()
     }
-    
+
     mockEmployees[index] = updatedEmployee
     console.log('🔧 デモモード: 社員情報を更新しました', updatedEmployee.name)
     return updatedEmployee
@@ -47,7 +48,7 @@ export const demoEmployeeService = {
   async delete(id: number): Promise<void> {
     const index = mockEmployees.findIndex(emp => emp.id === id)
     if (index === -1) throw new Error('社員が見つかりません')
-    
+
     console.log('🔧 デモモード: 社員を削除しました', mockEmployees[index].name)
     mockEmployees.splice(index, 1)
   },
@@ -127,7 +128,10 @@ export const demoTimeRecordService = {
     const clockOutTime = new Date(now)
     const workHours = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60)
 
-    const workEndTime = new Date(`${today}T${employee.work_end_time}`)
+    // 社員名ベースで所定退勤時刻を取得（仕様: 大﨑香奈子16:00、小齊平千明15:00、その他17:00）
+    const regularEndMinutes = getRegularEndMinutes(employee.name)
+    const regularEndTimeStr = minutesToTime(regularEndMinutes) + ':00'
+    const workEndTime = new Date(`${today}T${regularEndTimeStr}`)
     const isLate = mockTimeRecords[existingIndex].status === '遅刻'
     const isEarlyLeave = clockOutTime < workEndTime
     const isOvertime = clockOutTime > workEndTime
@@ -234,7 +238,10 @@ export const demoTimeRecordService = {
     // ステータス判定（直行・直帰モードの場合は出勤時のステータスを維持）
     let status: TimeRecordStatus = mockTimeRecords[existingIndex].status
     if (!isDirectWork) {
-      const workEndTime = new Date(`${today}T${employee.work_end_time}`)
+      // 社員名ベースで所定退勤時刻を取得（仕様: 大﨑香奈子16:00、小齊平千明15:00、その他17:00）
+      const regularEndMinutes = getRegularEndMinutes(employee.name)
+      const regularEndTimeStr = minutesToTime(regularEndMinutes) + ':00'
+      const workEndTime = new Date(`${today}T${regularEndTimeStr}`)
       const isLate = mockTimeRecords[existingIndex].status === '遅刻'
       const isEarlyLeave = clockOutTime < workEndTime
       const isOvertime = clockOutTime > workEndTime
@@ -276,14 +283,14 @@ export const demoTimeRecordService = {
 
   async getEmployeeRecords(employeeId: string, year?: number, month?: number): Promise<TimeRecord[]> {
     let records = mockTimeRecords.filter(record => record.employee_id === employeeId)
-    
+
     if (year && month) {
       const startDate = `${year}-${month.toString().padStart(2, '0')}-01`
       const lastDay = new Date(year, month, 0).getDate()
       const endDate = `${year}-${month.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`
       records = records.filter(record => record.record_date >= startDate && record.record_date <= endDate)
     }
-    
+
     return records.sort((a, b) => new Date(b.record_date).getTime() - new Date(a.record_date).getTime())
   },
 
