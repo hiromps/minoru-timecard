@@ -22,7 +22,7 @@ export interface TimeRecordWithEmployee {
 export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => {
   try {
     console.log('🔍 Fetching time records from Supabase...');
-    
+
     // まず基本的なtime_recordsデータを取得
     const { data: timeRecordsData, error: timeRecordsError } = await supabase
       .from('time_records')
@@ -89,7 +89,7 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
     const formattedData = timeRecordsData?.map((record: any) => {
       const recordKey = `${record.employee_id}-${record.record_date}`;
       const auditInfo = auditLogsMap.get(recordKey);
-      
+
       return {
         id: record.id,
         employee_id: record.employee_id,
@@ -166,7 +166,7 @@ export const correctTimeRecordByDeleteAndCreate = async (
       employeeData.work_start_time + ":00", // HH:MM:SS形式に変換
       employeeData.work_end_time + ":00"    // HH:MM:SS形式に変換
     );
-    
+
     const work_hours = workTimeResult.actualWorkHours;
     const status = workTimeResult.status;
 
@@ -238,7 +238,7 @@ export const updateTimeRecord = async (
       employeeData.work_start_time + ":00", // HH:MM:SS形式に変換
       employeeData.work_end_time + ":00"    // HH:MM:SS形式に変換
     );
-    
+
     const work_hours = workTimeResult.actualWorkHours;
     const status = workTimeResult.status;
 
@@ -331,7 +331,7 @@ const logCorrectionAction = async (
 export const getEmployees = async () => {
   try {
     console.log('🔍 Fetching employees from Supabase...');
-    
+
     const { data, error } = await supabase
       .from('employees')
       .select('id, employee_id, name')
@@ -354,7 +354,7 @@ export const getEmployees = async () => {
 export const recalculateAllStatus = async (): Promise<void> => {
   try {
     console.log('🔄 Recalculating all time record statuses...');
-    
+
     // 全ての打刻記録を取得
     const { data: records, error: recordsError } = await supabase
       .from('time_records')
@@ -425,7 +425,7 @@ export const recalculateAllStatus = async (): Promise<void> => {
 export const deleteTimeRecord = async (employee_id: string, record_date: string): Promise<void> => {
   try {
     console.log('🗑️ Deleting time record from Supabase:', { employee_id, record_date });
-    
+
     const { error } = await supabase
       .from('time_records')
       .delete()
@@ -448,7 +448,7 @@ export const deleteTimeRecord = async (employee_id: string, record_date: string)
 export const getAuditLogs = async (): Promise<any[]> => {
   try {
     console.log('🔍 Fetching audit logs from Supabase...');
-    
+
     const { data, error } = await supabase
       .from('audit_logs')
       .select('*')
