@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
 import EmployeeManagement from './EmployeeManagement';
 import TimeRecordManagement from './TimeRecordManagement';
+import MonthlySummary from './MonthlySummary';
 import './AdminDashboard.css';
 import { getAllTimeRecords } from '../lib/adminSupabase';
-import { formatWorkHoursForCSV } from '../utils/timeUtils';
+import { formatWorkHoursForCSV, formatMinutesForCSV } from '../utils/timeUtils';
 
 interface AdminDashboardProps {
   admin: any;
@@ -11,7 +12,7 @@ interface AdminDashboardProps {
 }
 
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
-  const [activeTab, setActiveTab] = useState<'export' | 'employees' | 'timerecords'>('export');
+  const [activeTab, setActiveTab] = useState<'export' | 'monthly' | 'employees' | 'timerecords'>('export');
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
   const [employeeId, setEmployeeId] = useState('');
@@ -41,13 +42,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
       }
 
       // CSVデータ作成
-      const csvHeader = '日付,社員ID,社員名,出勤時刻,退勤時刻,勤務時間,ステータス,修正理由\n';
+      const csvHeader = '日付,社員ID,社員名,出勤時刻,退勤時刻,勤務時間,残業時間,ステータス,修正理由\n';
       const csvContent = filteredRecords.map(record => {
         const formatTime = (timeString: string | null) => {
           if (!timeString) return '';
-          return new Date(timeString).toLocaleTimeString('ja-JP', { 
-            hour: '2-digit', 
-            minute: '2-digit' 
+          return new Date(timeString).toLocaleTimeString('ja-JP', {
+            hour: '2-digit',
+            minute: '2-digit'
           });
         };
 
@@ -58,6 +59,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
           formatTime(record.clock_in_time),
           formatTime(record.clock_out_time),
           formatWorkHoursForCSV(record.work_hours || 0),
+          formatMinutesForCSV(record.overtime_minutes || 0),
           record.status,
           `"${record.correction_reason || ''}"` // CSVでカンマが含まれる可能性があるのでクォート
         ].join(',');
@@ -99,13 +101,19 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
       </div>
 
       <div className="dashboard-tabs">
-        <button 
+        <button
           className={activeTab === 'export' ? 'tab-btn active' : 'tab-btn'}
           onClick={() => setActiveTab('export')}
         >
           データ出力
         </button>
-        <button 
+        <button
+          className={activeTab === 'monthly' ? 'tab-btn active' : 'tab-btn'}
+          onClick={() => setActiveTab('monthly')}
+        >
+          月次集計
+        </button>
+        <button
           className={activeTab === 'employees' ? 'tab-btn active' : 'tab-btn'}
           onClick={() => setActiveTab('employees')}
         >
@@ -176,8 +184,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
           </div>
         )}
 
+        {activeTab === 'monthly' && <MonthlySummary />}
+
         {activeTab === 'employees' && <EmployeeManagement />}
-        
+
         {activeTab === 'timerecords' && <TimeRecordManagement />}
       </div>
     </div>

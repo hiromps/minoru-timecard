@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import './TimeRecordManagement.css';
 import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, updateTimeRecord, getEmployees, TimeRecordWithEmployee, deleteTimeRecord, recalculateAllStatus } from '../lib/adminSupabase';
 import { formatWorkHours } from '../utils/timeUtils';
+import { minutesToHoursDisplay } from '../utils/overtimeCalculator';
 
 // TimeRecordWithEmployeeを使用するため、ローカル定義は削除
 
@@ -416,6 +417,7 @@ const TimeRecordManagement: React.FC = () => {
               <th>出勤時刻</th>
               <th>退勤時刻</th>
               <th>勤務時間</th>
+              <th>残業時間</th>
               <th>ステータス</th>
               <th>入力種別</th>
               <th>操作</th>
@@ -434,6 +436,7 @@ const TimeRecordManagement: React.FC = () => {
                 <td data-label="出勤">{formatTime(record.clock_in_time)}</td>
                 <td data-label="退勤">{formatTime(record.clock_out_time)}</td>
                 <td data-label="勤務時間">{formatWorkHours(record.work_hours)}</td>
+                <td data-label="残業時間">{minutesToHoursDisplay(record.overtime_minutes || 0)}</td>
                 <td data-label="ステータス">
                   <span className={`status ${record.status}`}>
                     {record.status}

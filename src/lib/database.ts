@@ -1,7 +1,7 @@
 import { supabase, Employee, TimeRecord, TimeRecordStatus, isDevMode } from './supabase'
 import { demoEmployeeService, demoTimeRecordService } from './demoDatabase'
 import { getJSTDate, getJSTMonthRange } from '../utils/dateUtils'
-import { getRegularEndMinutes, minutesToTime } from '../utils/overtimeCalculator'
+import { calculateWorkTimeAndStatus } from '../utils/workTimeUtils'
 
 // 社員関連の操作
 export const employeeService = {
@@ -150,16 +150,21 @@ export const timeRecordService = {
     const today = getJSTDate(now)
     const currentTime = now.toISOString()
 
-    // ステータス判定
-    const workStartTime = new Date(`${today}T${employee.work_start_time}`)
-    const status: TimeRecordStatus = now > workStartTime ? '遅刻' : '通常'
+    // ステータス判定（統一関数を使用・退勤前なので clockOut=null）
+    const { status } = calculateWorkTimeAndStatus(
+      currentTime,
+      null,
+      employee.work_start_time,
+      employee.work_end_time
+    )
 
     console.log('📝 出勤データ挿入開始:', {
       employee_id: employeeId,
       record_date: today,
       clock_in_time: currentTime,
       status: status,
-      work_hours: 0
+      work_hours: 0,
+      overtime_minutes: 0
     })
 
     const { data, error } = await supabase
@@ -169,7 +174,8 @@ export const timeRecordService = {
         record_date: today,
         clock_in_time: currentTime,
         status: status,
-        work_hours: 0
+        work_hours: 0,
+        overtime_minutes: 0
       })
       .select()
       .single()
@@ -216,40 +222,20 @@ export const timeRecordService = {
       throw new Error('本日の出勤記録が見つかりません')
     }
 
-    // 勤務時間とステータスを計算
-    const clockInTime = new Date(todayRecord.clock_in_time!)
-    const clockOutTime = now
-    const workHours = Math.round((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60) * 100) / 100
-
-    // 社員名ベースで所定退勤時刻を取得（仕様: 大﨑香奈子16:00、小齊平千明15:00、その他17:00）
-    const regularEndMinutes = getRegularEndMinutes(employee.name)
-    const regularEndTimeStr = minutesToTime(regularEndMinutes) + ':00'
-    const workEndTime = new Date(`${today}T${regularEndTimeStr}`)
-    const isLate = todayRecord.status === '遅刻'
-    const isEarlyLeave = now < workEndTime
-    const isOvertime = now > workEndTime
-
-    // 複合ステータス対応
-    let finalStatus: TimeRecordStatus
-    if (isLate && isEarlyLeave) {
-      finalStatus = '遅刻・早退'
-    } else if (isLate && isOvertime) {
-      finalStatus = '遅刻・残業'
-    } else if (isEarlyLeave) {
-      finalStatus = '早退'
-    } else if (isOvertime) {
-      finalStatus = '残業'
-    } else if (isLate) {
-      finalStatus = '遅刻'
-    } else {
-      finalStatus = '通常'
-    }
+    // 勤務時間・ステータス・残業時間を計算（統一関数を使用・DBの勤務時間基準）
+    const { actualWorkHours: workHours, status: finalStatus, overtimeMinutes } = calculateWorkTimeAndStatus(
+      todayRecord.clock_in_time,
+      currentTime,
+      employee.work_start_time,
+      employee.work_end_time
+    )
 
     console.log('📝 退勤データ更新開始:', {
       id: todayRecord.id,
       clock_out_time: currentTime,
       work_hours: workHours,
-      status: finalStatus
+      status: finalStatus,
+      overtime_minutes: overtimeMinutes
     })
 
     const { data, error } = await supabase
@@ -257,7 +243,8 @@ export const timeRecordService = {
       .update({
         clock_out_time: currentTime,
         work_hours: workHours,
-        status: finalStatus
+        status: finalStatus,
+        overtime_minutes: overtimeMinutes
       })
       .eq('id', todayRecord.id)
       .select()
@@ -292,11 +279,15 @@ export const timeRecordService = {
     const clockInTime = new Date(specifiedTime)
     const today = getJSTDate(clockInTime)
 
-    // ステータス判定（直行・直帰モードの場合は通常固定）
+    // ステータス判定（直行・直帰モードの場合は通常固定、それ以外は統一関数で判定）
     let status: TimeRecordStatus = '通常'
     if (!isDirectWork) {
-      const workStartTime = new Date(`${today}T${employee.work_start_time}`)
-      status = clockInTime > workStartTime ? '遅刻' : '通常'
+      status = calculateWorkTimeAndStatus(
+        specifiedTime,
+        null,
+        employee.work_start_time,
+        employee.work_end_time
+      ).status
     }
 
     console.log('📝 時刻指定出勤データ挿入開始:', {
@@ -305,6 +296,7 @@ export const timeRecordService = {
       clock_in_time: specifiedTime,
       status: status,
       work_hours: 0,
+      overtime_minutes: 0,
       is_direct_work: isDirectWork
     })
 
@@ -315,7 +307,8 @@ export const timeRecordService = {
         record_date: today,
         clock_in_time: specifiedTime,
         status: status,
-        work_hours: 0
+        work_hours: 0,
+        overtime_minutes: 0
       })
       .select()
       .single()
@@ -361,42 +354,29 @@ export const timeRecordService = {
       throw new Error('本日の出勤記録が見つかりません')
     }
 
-    // 勤務時間とステータスを計算
-    const clockInTime = new Date(todayRecord.clock_in_time!)
-    const workHours = Math.round((clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60) * 100) / 100
+    // 勤務時間・ステータス・残業時間を計算（統一関数を使用）
+    const calc = calculateWorkTimeAndStatus(
+      todayRecord.clock_in_time,
+      specifiedTime,
+      employee.work_start_time,
+      employee.work_end_time
+    )
+    const workHours = calc.actualWorkHours
 
-    // ステータス判定（直行・直帰モードの場合は出勤時のステータスを維持）
+    // 直行・直帰モードの場合は出勤時のステータスを維持し残業は計上しない
     let finalStatus: TimeRecordStatus = todayRecord.status
+    let overtimeMinutes = 0
     if (!isDirectWork) {
-      // 社員名ベースで所定退勤時刻を取得（仕様: 大﨑香奈子16:00、小齊平千明15:00、その他17:00）
-      const regularEndMinutes = getRegularEndMinutes(employee.name)
-      const regularEndTimeStr = minutesToTime(regularEndMinutes) + ':00'
-      const workEndTime = new Date(`${today}T${regularEndTimeStr}`)
-      const isLate = todayRecord.status === '遅刻'
-      const isEarlyLeave = clockOutTime < workEndTime
-      const isOvertime = clockOutTime > workEndTime
-
-      // 複合ステータス対応
-      if (isLate && isEarlyLeave) {
-        finalStatus = '遅刻・早退'
-      } else if (isLate && isOvertime) {
-        finalStatus = '遅刻・残業'
-      } else if (isEarlyLeave) {
-        finalStatus = '早退'
-      } else if (isOvertime) {
-        finalStatus = '残業'
-      } else if (isLate) {
-        finalStatus = '遅刻'
-      } else {
-        finalStatus = '通常'
-      }
+      finalStatus = calc.status
+      overtimeMinutes = calc.overtimeMinutes
     }
 
     console.log('📝 時刻指定退勤データ更新開始:', {
       id: todayRecord.id,
       clock_out_time: specifiedTime,
       work_hours: workHours,
-      status: finalStatus
+      status: finalStatus,
+      overtime_minutes: overtimeMinutes
     })
 
     const { data, error } = await supabase
@@ -404,7 +384,8 @@ export const timeRecordService = {
       .update({
         clock_out_time: specifiedTime,
         work_hours: workHours,
-        status: finalStatus
+        status: finalStatus,
+        overtime_minutes: overtimeMinutes
       })
       .eq('id', todayRecord.id)
       .select()

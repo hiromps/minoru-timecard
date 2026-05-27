@@ -33,6 +33,20 @@ export const formatWorkHoursForCSV = (hours: number): string => {
 };
 
 /**
+ * 分を「○:○○」形式に変換（CSV出力用・残業時間など）
+ * @param minutes 分数 (例: 90 = 1:30)
+ * @returns 「○:○○」形式の文字列
+ */
+export const formatMinutesForCSV = (minutes: number): string => {
+  if (!minutes || minutes <= 0) return '0:00';
+
+  const h = Math.floor(minutes / 60);
+  const m = Math.round(minutes % 60);
+
+  return `${h}:${m.toString().padStart(2, '0')}`;
+};
+
+/**
  * 時刻文字列から時間数を計算
  * @param startTime 開始時刻 (ISO string)
  * @param endTime 終了時刻 (ISO string)

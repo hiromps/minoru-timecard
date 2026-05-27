@@ -1,7 +1,7 @@
 import { Employee, TimeRecord, TimeRecordStatus } from './supabase'
 import { mockEmployees, mockTimeRecords } from './mockData'
 import { getJSTDate } from '../utils/dateUtils'
-import { getRegularEndMinutes, minutesToTime } from '../utils/overtimeCalculator'
+import { calculateWorkTimeAndStatus } from '../utils/workTimeUtils'
 
 // デモ環境用のデータベースサービス
 export const demoEmployeeService = {
@@ -77,9 +77,13 @@ export const demoTimeRecordService = {
       throw new Error('社員が見つかりません')
     }
 
-    const clockInTime = new Date(now)
-    const workStartTime = new Date(`${today}T${employee.work_start_time}`)
-    const status = clockInTime > workStartTime ? '遅刻' : '通常'
+    // ステータス判定（統一関数を使用・退勤前なので clockOut=null）
+    const { status } = calculateWorkTimeAndStatus(
+      now,
+      null,
+      employee.work_start_time,
+      employee.work_end_time
+    )
 
     const newRecord: TimeRecord = {
       id: Date.now(),
@@ -89,6 +93,7 @@ export const demoTimeRecordService = {
       clock_out_time: null,
       status,
       work_hours: 0,
+      overtime_minutes: 0,
       created_at: now,
       updated_at: now
     }
@@ -124,39 +129,20 @@ export const demoTimeRecordService = {
       throw new Error('社員が見つかりません')
     }
 
-    const clockInTime = new Date(mockTimeRecords[existingIndex].clock_in_time!)
-    const clockOutTime = new Date(now)
-    const workHours = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60)
-
-    // 社員名ベースで所定退勤時刻を取得（仕様: 大﨑香奈子16:00、小齊平千明15:00、その他17:00）
-    const regularEndMinutes = getRegularEndMinutes(employee.name)
-    const regularEndTimeStr = minutesToTime(regularEndMinutes) + ':00'
-    const workEndTime = new Date(`${today}T${regularEndTimeStr}`)
-    const isLate = mockTimeRecords[existingIndex].status === '遅刻'
-    const isEarlyLeave = clockOutTime < workEndTime
-    const isOvertime = clockOutTime > workEndTime
-
-    // 複合ステータス対応
-    let status: TimeRecordStatus
-    if (isLate && isEarlyLeave) {
-      status = '遅刻・早退'
-    } else if (isLate && isOvertime) {
-      status = '遅刻・残業'
-    } else if (isEarlyLeave) {
-      status = '早退'
-    } else if (isOvertime) {
-      status = '残業'
-    } else if (isLate) {
-      status = '遅刻'
-    } else {
-      status = '通常'
-    }
+    // 勤務時間・ステータス・残業時間を計算（統一関数を使用・DBの勤務時間基準）
+    const { actualWorkHours, status, overtimeMinutes } = calculateWorkTimeAndStatus(
+      mockTimeRecords[existingIndex].clock_in_time,
+      now,
+      employee.work_start_time,
+      employee.work_end_time
+    )
 
     mockTimeRecords[existingIndex] = {
       ...mockTimeRecords[existingIndex],
       clock_out_time: now,
-      work_hours: Math.round(workHours * 100) / 100,
+      work_hours: actualWorkHours,
       status,
+      overtime_minutes: overtimeMinutes,
       updated_at: now
     }
 
@@ -182,11 +168,15 @@ export const demoTimeRecordService = {
       throw new Error('社員が見つかりません')
     }
 
-    // ステータス判定（直行・直帰モードの場合は通常固定）
+    // ステータス判定（直行・直帰モードの場合は通常固定、それ以外は統一関数で判定）
     let status: TimeRecordStatus = '通常'
     if (!isDirectWork) {
-      const workStartTime = new Date(`${today}T${employee.work_start_time}`)
-      status = clockInTime > workStartTime ? '遅刻' : '通常'
+      status = calculateWorkTimeAndStatus(
+        specifiedTime,
+        null,
+        employee.work_start_time,
+        employee.work_end_time
+      ).status
     }
 
     const newRecord: TimeRecord = {
@@ -197,6 +187,7 @@ export const demoTimeRecordService = {
       clock_out_time: null,
       status,
       work_hours: 0,
+      overtime_minutes: 0,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
@@ -232,41 +223,28 @@ export const demoTimeRecordService = {
       throw new Error('社員が見つかりません')
     }
 
-    const clockInTime = new Date(mockTimeRecords[existingIndex].clock_in_time!)
-    const workHours = (clockOutTime.getTime() - clockInTime.getTime()) / (1000 * 60 * 60)
+    // 勤務時間・ステータス・残業時間を計算（統一関数を使用）
+    const calc = calculateWorkTimeAndStatus(
+      mockTimeRecords[existingIndex].clock_in_time,
+      specifiedTime,
+      employee.work_start_time,
+      employee.work_end_time
+    )
 
-    // ステータス判定（直行・直帰モードの場合は出勤時のステータスを維持）
+    // 直行・直帰モードの場合は出勤時のステータスを維持し残業は計上しない
     let status: TimeRecordStatus = mockTimeRecords[existingIndex].status
+    let overtimeMinutes = 0
     if (!isDirectWork) {
-      // 社員名ベースで所定退勤時刻を取得（仕様: 大﨑香奈子16:00、小齊平千明15:00、その他17:00）
-      const regularEndMinutes = getRegularEndMinutes(employee.name)
-      const regularEndTimeStr = minutesToTime(regularEndMinutes) + ':00'
-      const workEndTime = new Date(`${today}T${regularEndTimeStr}`)
-      const isLate = mockTimeRecords[existingIndex].status === '遅刻'
-      const isEarlyLeave = clockOutTime < workEndTime
-      const isOvertime = clockOutTime > workEndTime
-
-      // 複合ステータス対応
-      if (isLate && isEarlyLeave) {
-        status = '遅刻・早退'
-      } else if (isLate && isOvertime) {
-        status = '遅刻・残業'
-      } else if (isEarlyLeave) {
-        status = '早退'
-      } else if (isOvertime) {
-        status = '残業'
-      } else if (isLate) {
-        status = '遅刻'
-      } else {
-        status = '通常'
-      }
+      status = calc.status
+      overtimeMinutes = calc.overtimeMinutes
     }
 
     mockTimeRecords[existingIndex] = {
       ...mockTimeRecords[existingIndex],
       clock_out_time: specifiedTime,
-      work_hours: Math.round(workHours * 100) / 100,
+      work_hours: calc.actualWorkHours,
       status,
+      overtime_minutes: overtimeMinutes,
       updated_at: new Date().toISOString()
     }
 

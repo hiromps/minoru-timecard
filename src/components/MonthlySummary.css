@@ -1,0 +1,129 @@
+.monthly-summary {
+  padding: 20px;
+}
+
+.summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 16px;
+  margin-bottom: 20px;
+}
+
+.summary-header h2 {
+  margin: 0;
+  color: #2d3748;
+}
+
+.summary-filters {
+  display: flex;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.summary-filters .filter-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.summary-filters label {
+  font-weight: 600;
+  color: #4a5568;
+}
+
+.summary-filters select {
+  padding: 8px 12px;
+  border: 1px solid #cbd5e0;
+  border-radius: 8px;
+  font-size: 14px;
+  background: white;
+}
+
+.summary-loading {
+  text-align: center;
+  padding: 40px;
+  color: #718096;
+}
+
+.summary-table-container {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  overflow: hidden;
+}
+
+.summary-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.summary-table thead th {
+  background: #4a90e2;
+  color: white;
+  padding: 14px 12px;
+  text-align: left;
+  font-weight: 600;
+  font-size: 14px;
+}
+
+.summary-table tbody td {
+  padding: 12px;
+  border-bottom: 1px solid #e2e8f0;
+  color: #2d3748;
+  font-size: 14px;
+}
+
+.summary-table tbody tr:hover {
+  background: #f7fafc;
+}
+
+.summary-no-data {
+  text-align: center;
+  color: #718096;
+  padding: 32px;
+}
+
+/* モバイル対応：カード形式に変換 */
+@media (max-width: 767px) {
+  .summary-table thead {
+    display: none;
+  }
+
+  .summary-table tbody {
+    display: block;
+  }
+
+  .summary-table tr {
+    display: block;
+    background: white;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    margin-bottom: 12px;
+    padding: 16px;
+    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  }
+
+  .summary-table td {
+    display: block;
+    padding: 8px 0;
+    border: none;
+    text-align: right;
+    padding-left: 50%;
+    position: relative;
+  }
+
+  .summary-table td::before {
+    content: attr(data-label) ": ";
+    position: absolute;
+    left: 0;
+    width: 45%;
+    padding-right: 10px;
+    white-space: nowrap;
+    text-align: left;
+    font-weight: 600;
+    color: #4a5568;
+    font-size: 12px;
+  }
+}

@@ -7,15 +7,31 @@ import { TimeRecordStatus } from '../lib/supabase';
 export interface WorkTimeResult {
   actualWorkHours: number;
   status: TimeRecordStatus;
+  /** 残業時間（分）。退勤時刻 - 所定退勤時刻(workEndTime)。0以上。退勤なしは0。 */
+  overtimeMinutes: number;
 }
 
 /**
- * 勤務時間とステータスを計算
+ * 時刻文字列を "HH:MM:SS" 形式に正規化する
+ * 呼び出し側が "HH:MM"（DB値）でも "HH:MM:SS"（mockData）でも受け付けられるようにする
+ * @param timeStr "HH:MM" または "HH:MM:SS" 形式の時刻文字列
+ * @returns "HH:MM:SS" 形式の時刻文字列
+ */
+const normalizeTimeString = (timeStr: string): string => {
+  const parts = timeStr.split(':');
+  if (parts.length === 2) {
+    return `${timeStr}:00`;
+  }
+  return timeStr;
+};
+
+/**
+ * 勤務時間とステータスを計算（打刻・修正・再計算・集計の単一の信頼できる計算関数）
  * @param clockInTime 出勤時刻 (ISO string)
  * @param clockOutTime 退勤時刻 (ISO string)
  * @param workStartTime 労働開始時刻 (例: "09:00:00" または "09:00")
  * @param workEndTime 労働終了時刻 (例: "17:00:00" または "17:00")
- * @returns 実労働時間とステータス
+ * @returns 実労働時間・ステータス・残業時間（分）
  */
 export const calculateWorkTimeAndStatus = (
   clockInTime: string | null,
@@ -25,16 +41,16 @@ export const calculateWorkTimeAndStatus = (
 ): WorkTimeResult => {
   // デフォルト値
   if (!clockInTime) {
-    return { actualWorkHours: 0, status: '通常' };
+    return { actualWorkHours: 0, status: '通常', overtimeMinutes: 0 };
   }
 
   const clockIn = new Date(clockInTime);
   const clockOut = clockOutTime ? new Date(clockOutTime) : null;
 
-  // 今日の日付で労働開始・終了時刻を作成
+  // 時刻文字列を正規化（"HH:MM" → "HH:MM:SS"）してから日付と結合
   const today = clockIn.toDateString();
-  const workStart = new Date(`${today} ${workStartTime}`);
-  const workEnd = new Date(`${today} ${workEndTime}`);
+  const workStart = new Date(`${today} ${normalizeTimeString(workStartTime)}`);
+  const workEnd = new Date(`${today} ${normalizeTimeString(workEndTime)}`);
 
   // 遅刻判定：出勤時刻 > 設定された出勤時刻
   const isLate = clockIn > workStart;
@@ -43,11 +59,12 @@ export const calculateWorkTimeAndStatus = (
   if (!clockOut) {
     return {
       actualWorkHours: 0,
-      status: isLate ? '遅刻' : '通常'
+      status: isLate ? '遅刻' : '通常',
+      overtimeMinutes: 0
     };
   }
 
-  // 実労働時間の計算（出勤から退勤まで）
+  // 実労働時間の計算（出勤から退勤まで・実打刻ベース）
   const actualWorkMinutes = Math.max(0, (clockOut.getTime() - clockIn.getTime()) / (1000 * 60));
   const actualWorkHours = Math.round((actualWorkMinutes / 60) * 100) / 100;
 
@@ -57,19 +74,22 @@ export const calculateWorkTimeAndStatus = (
   // 残業判定：退勤時刻 > 設定された退勤時刻
   const isOvertime = clockOut > workEnd;
 
+  // 残業時間（分）：退勤時刻 - 所定退勤時刻。マイナスなら0。isOvertime と同じ workEnd から導出。
+  const overtimeMinutes = Math.max(0, Math.round((clockOut.getTime() - workEnd.getTime()) / (1000 * 60)));
+
   // 複合ステータス対応
   if (isLate && isEarlyDeparture) {
-    return { actualWorkHours, status: '遅刻・早退' };
+    return { actualWorkHours, status: '遅刻・早退', overtimeMinutes };
   } else if (isLate && isOvertime) {
-    return { actualWorkHours, status: '遅刻・残業' };
+    return { actualWorkHours, status: '遅刻・残業', overtimeMinutes };
   } else if (isLate) {
-    return { actualWorkHours, status: '遅刻' };
+    return { actualWorkHours, status: '遅刻', overtimeMinutes };
   } else if (isEarlyDeparture) {
-    return { actualWorkHours, status: '早退' };
+    return { actualWorkHours, status: '早退', overtimeMinutes };
   } else if (isOvertime) {
-    return { actualWorkHours, status: '残業' };
+    return { actualWorkHours, status: '残業', overtimeMinutes };
   } else {
-    return { actualWorkHours, status: '通常' };
+    return { actualWorkHours, status: '通常', overtimeMinutes };
   }
 };
 
