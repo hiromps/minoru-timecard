@@ -133,6 +133,7 @@ export interface TimeRecord {
   clock_out_time: string | null
   status: TimeRecordStatus
   work_hours: number
+  overtime_minutes: number
   created_at: string
   updated_at: string
 }

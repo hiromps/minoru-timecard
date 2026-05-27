@@ -1,5 +1,7 @@
-import { supabase } from './supabase';
+import { supabase, isDevMode } from './supabase';
 import { calculateWorkTimeAndStatus } from '../utils/workTimeUtils';
+import { getJSTMonthRange } from '../utils/dateUtils';
+import { demoTimeRecordService, demoEmployeeService } from './demoDatabase';
 
 export interface TimeRecordWithEmployee {
   id: number;
@@ -9,6 +11,7 @@ export interface TimeRecordWithEmployee {
   clock_in_time: string | null;
   clock_out_time: string | null;
   work_hours: number;
+  overtime_minutes: number;
   status: string;
   is_manual_entry: boolean;
   approved_by?: string;
@@ -16,6 +19,17 @@ export interface TimeRecordWithEmployee {
   updated_at: string;
   correction_reason?: string;
   correction_history?: any[];
+}
+
+// 月次集計の1行（社員ごと）
+export interface MonthlySummaryRow {
+  employee_id: string;
+  employee_name: string;
+  workDays: number;
+  totalWorkHours: number;
+  totalOvertimeMinutes: number;
+  lateCount: number;
+  earlyLeaveCount: number;
 }
 
 // 全打刻記録を取得（管理者用）
@@ -33,6 +47,7 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
         clock_in_time,
         clock_out_time,
         work_hours,
+        overtime_minutes,
         status,
         created_at,
         updated_at
@@ -98,6 +113,7 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
         clock_in_time: record.clock_in_time,
         clock_out_time: record.clock_out_time,
         work_hours: record.work_hours || 0,
+        overtime_minutes: record.overtime_minutes || 0,
         status: record.status,
         is_manual_entry: false, // 基本的に自動入力として扱う
         approved_by: record.approved_by,
@@ -169,8 +185,9 @@ export const correctTimeRecordByDeleteAndCreate = async (
 
     const work_hours = workTimeResult.actualWorkHours;
     const status = workTimeResult.status;
+    const overtime_minutes = workTimeResult.overtimeMinutes;
 
-    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}`);
+    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分`);
 
     // 新しいレコードを作成
     const { data: newRecord, error: insertError } = await supabase
@@ -181,6 +198,7 @@ export const correctTimeRecordByDeleteAndCreate = async (
         clock_in_time: formattedClockIn,
         clock_out_time: formattedClockOut,
         work_hours,
+        overtime_minutes,
         status
       })
       .select()
@@ -241,8 +259,9 @@ export const updateTimeRecord = async (
 
     const work_hours = workTimeResult.actualWorkHours;
     const status = workTimeResult.status;
+    const overtime_minutes = workTimeResult.overtimeMinutes;
 
-    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}`);
+    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分`);
 
     const { data: updatedRecord, error } = await supabase
       .from('time_records')
@@ -250,6 +269,7 @@ export const updateTimeRecord = async (
         clock_in_time: formattedClockIn,
         clock_out_time: formattedClockOut,
         work_hours,
+        overtime_minutes,
         status,
         updated_at: new Date().toISOString()
       })
@@ -397,12 +417,13 @@ export const recalculateAllStatus = async (): Promise<void> => {
         employee.work_end_time + ":00"
       );
 
-      // ステータスが変更された場合のみ更新
+      // ステータス・勤務時間・残業時間を再計算して更新
       const { error: updateError } = await supabase
         .from('time_records')
         .update({
           status: workTimeResult.status,
           work_hours: workTimeResult.actualWorkHours,
+          overtime_minutes: workTimeResult.overtimeMinutes,
           updated_at: new Date().toISOString()
         })
         .eq('id', record.id);
@@ -464,6 +485,125 @@ export const getAuditLogs = async (): Promise<any[]> => {
     return data || [];
   } catch (error) {
     console.error('❌ Error in getAuditLogs:', error);
+    throw error;
+  }
+};
+
+// 指定年月の打刻記録を社員ごとに集計
+// 勤務日数=出勤打刻ありの日、総労働=work_hours合計、残業=overtime_minutes合計、
+// 遅刻=statusに'遅刻'を含む、早退=statusに'早退'を含む
+export const getMonthlySummary = async (year: number, month: number): Promise<MonthlySummaryRow[]> => {
+  try {
+    console.log('📊 月次集計を取得中...', { year, month });
+
+    const { startDate, endDate } = getJSTMonthRange(year, month);
+
+    // 社員一覧と当月の打刻記録を取得（デモ/本番で分岐）
+    let employees: { employee_id: string; name: string }[] = [];
+    let records: {
+      employee_id: string;
+      clock_in_time: string | null;
+      work_hours: number | null;
+      overtime_minutes: number | null;
+      status: string;
+    }[] = [];
+
+    if (isDevMode) {
+      console.log('🔧 デモモードで月次集計処理');
+      const demoEmployees = await demoEmployeeService.getAll();
+      employees = demoEmployees.map(emp => ({ employee_id: emp.employee_id, name: emp.name }));
+
+      const allRecords = await demoTimeRecordService.getAllRecords();
+      records = allRecords
+        .filter(r => r.record_date >= startDate && r.record_date <= endDate)
+        .map(r => ({
+          employee_id: r.employee_id,
+          clock_in_time: r.clock_in_time,
+          work_hours: r.work_hours,
+          overtime_minutes: r.overtime_minutes,
+          status: r.status
+        }));
+    } else {
+      const { data: employeesData, error: employeesError } = await supabase
+        .from('employees')
+        .select('employee_id, name')
+        .order('employee_id');
+
+      if (employeesError) {
+        console.error('❌ Error fetching employees:', employeesError);
+        throw new Error(`社員データの取得に失敗しました: ${employeesError.message}`);
+      }
+      employees = employeesData || [];
+
+      const { data: recordsData, error: recordsError } = await supabase
+        .from('time_records')
+        .select('employee_id, clock_in_time, work_hours, overtime_minutes, status')
+        .gte('record_date', startDate)
+        .lte('record_date', endDate);
+
+      if (recordsError) {
+        console.error('❌ Error fetching time records:', recordsError);
+        throw new Error(`打刻記録の取得に失敗しました: ${recordsError.message}`);
+      }
+      records = recordsData || [];
+    }
+
+    // 社員ID単位で集計用マップを初期化（打刻のない社員も0行として表示）
+    const summaryMap = new Map<string, MonthlySummaryRow>();
+    employees.forEach(emp => {
+      summaryMap.set(emp.employee_id, {
+        employee_id: emp.employee_id,
+        employee_name: emp.name,
+        workDays: 0,
+        totalWorkHours: 0,
+        totalOvertimeMinutes: 0,
+        lateCount: 0,
+        earlyLeaveCount: 0
+      });
+    });
+
+    // 打刻記録を集計
+    records.forEach(record => {
+      let row = summaryMap.get(record.employee_id);
+      if (!row) {
+        // 社員マスタに存在しない記録もフォールバックで集計
+        row = {
+          employee_id: record.employee_id,
+          employee_name: `社員${record.employee_id}`,
+          workDays: 0,
+          totalWorkHours: 0,
+          totalOvertimeMinutes: 0,
+          lateCount: 0,
+          earlyLeaveCount: 0
+        };
+        summaryMap.set(record.employee_id, row);
+      }
+
+      if (record.clock_in_time) {
+        row.workDays += 1;
+      }
+      row.totalWorkHours += record.work_hours || 0;
+      row.totalOvertimeMinutes += record.overtime_minutes || 0;
+      if (record.status && record.status.includes('遅刻')) {
+        row.lateCount += 1;
+      }
+      if (record.status && record.status.includes('早退')) {
+        row.earlyLeaveCount += 1;
+      }
+    });
+
+    // 小数誤差を丸めて配列化
+    const result = Array.from(summaryMap.values())
+      .map(row => ({
+        ...row,
+        totalWorkHours: Math.round(row.totalWorkHours * 100) / 100
+      }))
+      .sort((a, b) => a.employee_id.localeCompare(b.employee_id));
+
+    console.log('✅ 月次集計完了:', result.length, '名分');
+    return result;
+  } catch (error) {
+    console.error('❌ Error in getMonthlySummary:', error);
     throw error;
   }
 };
