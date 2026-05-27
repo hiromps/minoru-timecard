@@ -32,3 +32,6 @@ nul
 # supabase CLI local files
 supabase/.temp
 supabase/.branches
+
+# claude code local files
+.claude/

@@ -82,7 +82,8 @@ export const demoTimeRecordService = {
       now,
       null,
       employee.work_start_time,
-      employee.work_end_time
+      employee.work_end_time,
+      today
     )
 
     const newRecord: TimeRecord = {
@@ -134,7 +135,8 @@ export const demoTimeRecordService = {
       mockTimeRecords[existingIndex].clock_in_time,
       now,
       employee.work_start_time,
-      employee.work_end_time
+      employee.work_end_time,
+      today
     )
 
     mockTimeRecords[existingIndex] = {
@@ -175,7 +177,8 @@ export const demoTimeRecordService = {
         specifiedTime,
         null,
         employee.work_start_time,
-        employee.work_end_time
+        employee.work_end_time,
+        today
       ).status
     }
 
@@ -228,7 +231,8 @@ export const demoTimeRecordService = {
       mockTimeRecords[existingIndex].clock_in_time,
       specifiedTime,
       employee.work_start_time,
-      employee.work_end_time
+      employee.work_end_time,
+      today
     )
 
     // 直行・直帰モードの場合は出勤時のステータスを維持し残業は計上しない

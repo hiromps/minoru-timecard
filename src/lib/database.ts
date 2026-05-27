@@ -155,7 +155,8 @@ export const timeRecordService = {
       currentTime,
       null,
       employee.work_start_time,
-      employee.work_end_time
+      employee.work_end_time,
+      today
     )
 
     console.log('📝 出勤データ挿入開始:', {
@@ -227,7 +228,8 @@ export const timeRecordService = {
       todayRecord.clock_in_time,
       currentTime,
       employee.work_start_time,
-      employee.work_end_time
+      employee.work_end_time,
+      todayRecord.record_date
     )
 
     console.log('📝 退勤データ更新開始:', {
@@ -286,7 +288,8 @@ export const timeRecordService = {
         specifiedTime,
         null,
         employee.work_start_time,
-        employee.work_end_time
+        employee.work_end_time,
+        today
       ).status
     }
 
@@ -359,7 +362,8 @@ export const timeRecordService = {
       todayRecord.clock_in_time,
       specifiedTime,
       employee.work_start_time,
-      employee.work_end_time
+      employee.work_end_time,
+      todayRecord.record_date
     )
     const workHours = calc.actualWorkHours
 

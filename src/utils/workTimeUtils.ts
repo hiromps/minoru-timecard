@@ -3,6 +3,7 @@
  */
 
 import { TimeRecordStatus } from '../lib/supabase';
+import { localDateTimeToISO, getJSTDate } from './dateUtils';
 
 export interface WorkTimeResult {
   actualWorkHours: number;
@@ -12,32 +13,36 @@ export interface WorkTimeResult {
 }
 
 /**
- * 時刻文字列を "HH:MM:SS" 形式に正規化する
+ * 時刻文字列を "HH:MM" 形式に切り出す
  * 呼び出し側が "HH:MM"（DB値）でも "HH:MM:SS"（mockData）でも受け付けられるようにする
  * @param timeStr "HH:MM" または "HH:MM:SS" 形式の時刻文字列
- * @returns "HH:MM:SS" 形式の時刻文字列
+ * @returns "HH:MM" 形式の時刻文字列
  */
-const normalizeTimeString = (timeStr: string): string => {
-  const parts = timeStr.split(':');
-  if (parts.length === 2) {
-    return `${timeStr}:00`;
-  }
-  return timeStr;
-};
+const toHHMM = (timeStr: string): string => timeStr.split(':').slice(0, 2).join(':');
 
 /**
  * 勤務時間とステータスを計算（打刻・修正・再計算・集計の単一の信頼できる計算関数）
- * @param clockInTime 出勤時刻 (ISO string)
- * @param clockOutTime 退勤時刻 (ISO string)
- * @param workStartTime 労働開始時刻 (例: "09:00:00" または "09:00")
- * @param workEndTime 労働終了時刻 (例: "17:00:00" または "17:00")
+ *
+ * 重要（タイムゾーン）:
+ * - clockInTime/clockOutTime はUTCの絶対時刻（DBのtimestamptz / ISO文字列）。
+ * - workStartTime/workEndTime は「JSTの時刻」、recordDate は「JSTの日付」を表す。
+ * - 所定時刻は localDateTimeToISO で JST→UTC の絶対時刻に変換してから比較する。
+ *   こうしないと、UTC実行環境(Vercel)で new Date("...日付 17:00") がUTCの17:00と
+ *   解釈され、JSTの打刻と9時間ズレて全打刻が誤判定される（過去の不具合）。
+ *
+ * @param clockInTime 出勤時刻 (UTC ISO string)
+ * @param clockOutTime 退勤時刻 (UTC ISO string)
+ * @param workStartTime 所定始業時刻・JST (例: "09:00:00" または "09:00")
+ * @param workEndTime 所定終業時刻・JST (例: "17:00:00" または "17:00")
+ * @param recordDate 打刻日・JST ("YYYY-MM-DD")。未指定時は clockIn のJST日付を使用
  * @returns 実労働時間・ステータス・残業時間（分）
  */
 export const calculateWorkTimeAndStatus = (
   clockInTime: string | null,
   clockOutTime: string | null,
   workStartTime: string = "09:00:00",
-  workEndTime: string = "17:00:00"
+  workEndTime: string = "17:00:00",
+  recordDate?: string
 ): WorkTimeResult => {
   // デフォルト値
   if (!clockInTime) {
@@ -47,10 +52,11 @@ export const calculateWorkTimeAndStatus = (
   const clockIn = new Date(clockInTime);
   const clockOut = clockOutTime ? new Date(clockOutTime) : null;
 
-  // 時刻文字列を正規化（"HH:MM" → "HH:MM:SS"）してから日付と結合
-  const today = clockIn.toDateString();
-  const workStart = new Date(`${today} ${normalizeTimeString(workStartTime)}`);
-  const workEnd = new Date(`${today} ${normalizeTimeString(workEndTime)}`);
+  // 所定時刻が属するJST日付（引数優先、無ければ clockIn のJST日付）を基準に、
+  // JSTの所定始業・終業を UTC絶対時刻へ変換する（タイムゾーン非依存）
+  const baseDate = recordDate ?? getJSTDate(clockIn);
+  const workStart = new Date(localDateTimeToISO(`${baseDate}T${toHHMM(workStartTime)}`));
+  const workEnd = new Date(localDateTimeToISO(`${baseDate}T${toHHMM(workEndTime)}`));
 
   // 遅刻判定：出勤時刻 > 設定された出勤時刻
   const isLate = clockIn > workStart;

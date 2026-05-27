@@ -1,6 +1,6 @@
 import { supabase, isDevMode } from './supabase';
 import { calculateWorkTimeAndStatus } from '../utils/workTimeUtils';
-import { getJSTMonthRange } from '../utils/dateUtils';
+import { getJSTMonthRange, localDateTimeToISO } from '../utils/dateUtils';
 import { demoTimeRecordService, demoEmployeeService } from './demoDatabase';
 
 export interface TimeRecordWithEmployee {
@@ -141,15 +141,10 @@ export const correctTimeRecordByDeleteAndCreate = async (
   reason: string
 ): Promise<void> => {
   try {
-    // 時間フォーマットを正しいISO形式に変換
-    const formatToISO = (datetimeLocal: string): string => {
-      if (!datetimeLocal) return '';
-      // YYYY-MM-DDTHH:MM形式をISO形式に変換
-      return new Date(datetimeLocal).toISOString();
-    };
-
-    const formattedClockIn = clock_in_time ? formatToISO(clock_in_time) : null;
-    const formattedClockOut = clock_out_time ? formatToISO(clock_out_time) : null;
+    // datetime-local（JSTとして入力された時刻）をUTCのISO形式に変換
+    // localDateTimeToISO はブラウザのTZに依存せず常にJSTとして解釈する
+    const formattedClockIn = clock_in_time ? localDateTimeToISO(clock_in_time) : null;
+    const formattedClockOut = clock_out_time ? localDateTimeToISO(clock_out_time) : null;
 
     // トランザクション的な処理のため、まず削除
     const { error: deleteError } = await supabase
@@ -175,12 +170,13 @@ export const correctTimeRecordByDeleteAndCreate = async (
       throw new Error('社員の勤務時間情報の取得に失敗しました');
     }
 
-    // 社員の個別勤務時間を使用してステータスを計算
+    // 社員の個別勤務時間を使用してステータスを計算（record_date基準でJST判定）
     const workTimeResult = calculateWorkTimeAndStatus(
       formattedClockIn,
       formattedClockOut,
-      employeeData.work_start_time + ":00", // HH:MM:SS形式に変換
-      employeeData.work_end_time + ":00"    // HH:MM:SS形式に変換
+      employeeData.work_start_time,
+      employeeData.work_end_time,
+      record_date
     );
 
     const work_hours = workTimeResult.actualWorkHours;
@@ -227,15 +223,10 @@ export const updateTimeRecord = async (
   reason: string
 ): Promise<void> => {
   try {
-    // 時間フォーマットを正しいISO形式に変換
-    const formatToISO = (datetimeLocal: string): string => {
-      if (!datetimeLocal) return '';
-      // YYYY-MM-DDTHH:MM形式をISO形式に変換
-      return new Date(datetimeLocal).toISOString();
-    };
-
-    const formattedClockIn = clock_in_time ? formatToISO(clock_in_time) : null;
-    const formattedClockOut = clock_out_time ? formatToISO(clock_out_time) : null;
+    // datetime-local（JSTとして入力された時刻）をUTCのISO形式に変換
+    // localDateTimeToISO はブラウザのTZに依存せず常にJSTとして解釈する
+    const formattedClockIn = clock_in_time ? localDateTimeToISO(clock_in_time) : null;
+    const formattedClockOut = clock_out_time ? localDateTimeToISO(clock_out_time) : null;
 
     // 社員の個別勤務時間を取得
     const { data: employeeData, error: employeeError } = await supabase
@@ -249,12 +240,13 @@ export const updateTimeRecord = async (
       throw new Error('社員の勤務時間情報の取得に失敗しました');
     }
 
-    // 社員の個別勤務時間を使用してステータスを計算
+    // 社員の個別勤務時間を使用してステータスを計算（record_date基準でJST判定）
     const workTimeResult = calculateWorkTimeAndStatus(
       formattedClockIn,
       formattedClockOut,
-      employeeData.work_start_time + ":00", // HH:MM:SS形式に変換
-      employeeData.work_end_time + ":00"    // HH:MM:SS形式に変換
+      employeeData.work_start_time,
+      employeeData.work_end_time,
+      record_date
     );
 
     const work_hours = workTimeResult.actualWorkHours;
@@ -375,7 +367,7 @@ export const recalculateAllStatus = async (): Promise<void> => {
   try {
     console.log('🔄 Recalculating all time record statuses...');
 
-    // 全ての打刻記録を取得
+    // 全ての打刻記録を取得（record_date はステータス判定のJST基準日に使用）
     const { data: records, error: recordsError } = await supabase
       .from('time_records')
       .select('id, employee_id, record_date, clock_in_time, clock_out_time');
@@ -413,8 +405,9 @@ export const recalculateAllStatus = async (): Promise<void> => {
       const workTimeResult = calculateWorkTimeAndStatus(
         record.clock_in_time,
         record.clock_out_time,
-        employee.work_start_time + ":00",
-        employee.work_end_time + ":00"
+        employee.work_start_time,
+        employee.work_end_time,
+        record.record_date
       );
 
       // ステータス・勤務時間・残業時間を再計算して更新
