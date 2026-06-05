@@ -387,7 +387,8 @@ export const timeRecordService = {
         clock_in_time: specifiedTime,
         status: status,
         work_hours: 0,
-        overtime_minutes: 0
+        overtime_minutes: 0,
+        is_direct_work: isDirectWork
       })
       .select()
       .single()
@@ -437,10 +438,12 @@ export const timeRecordService = {
     )
     const workHours = calc.actualWorkHours
 
-    // 直行・直帰モードの場合は出勤時のステータスを維持し残業は計上しない
+    // 直行・直帰判定は退勤時の引数だけでなく、出勤時にDB保存されたフラグも見る。
+    // 直行直帰なら出勤時ステータスを維持し残業は計上しない（勤務時間は計上）。
+    const directWork = isDirectWork || todayRecord.is_direct_work === true
     let finalStatus: TimeRecordStatus = todayRecord.status
     let overtimeMinutes = 0
-    if (!isDirectWork) {
+    if (!directWork) {
       finalStatus = calc.status
       overtimeMinutes = calc.overtimeMinutes
     }
@@ -450,7 +453,8 @@ export const timeRecordService = {
       clock_out_time: specifiedTime,
       work_hours: workHours,
       status: finalStatus,
-      overtime_minutes: overtimeMinutes
+      overtime_minutes: overtimeMinutes,
+      is_direct_work: directWork
     })
 
     const { data, error } = await supabase
@@ -459,7 +463,8 @@ export const timeRecordService = {
         clock_out_time: specifiedTime,
         work_hours: workHours,
         status: finalStatus,
-        overtime_minutes: overtimeMinutes
+        overtime_minutes: overtimeMinutes,
+        is_direct_work: directWork
       })
       .eq('id', todayRecord.id)
       .select()

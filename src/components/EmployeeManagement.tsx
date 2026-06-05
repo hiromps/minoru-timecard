@@ -31,7 +31,15 @@ const EmployeeManagement: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     console.log('🎯 フォーム送信開始:', formData);
-    
+
+    // 所定終業 > 所定始業 を検証。逆転設定は勤怠判定が破綻し '設定エラー' を
+    // 生むため、保存前に弾く（現状は夜勤=日跨ぎ勤務は非対応）。
+    if (formData.work_start_time && formData.work_end_time &&
+        formData.work_end_time <= formData.work_start_time) {
+      alert('退勤時間は出勤時間より後にしてください');
+      return;
+    }
+
     try {
       if (editingEmployee) {
         // 更新

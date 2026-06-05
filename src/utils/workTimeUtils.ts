@@ -20,6 +20,28 @@ export interface WorkTimeResult {
  */
 const toHHMM = (timeStr: string): string => timeStr.split(':').slice(0, 2).join(':');
 
+/** 所定昼休憩（JST 12:00〜13:00）。実勤務時間と重なった分のみ控除する。 */
+const BREAK_START_HHMM = '12:00';
+const BREAK_END_HHMM = '13:00';
+
+/**
+ * 勤務時間帯 [workIn, workOut) と昼休憩 [breakStart, breakEnd) の
+ * 重なり分（分）を返す。重ならなければ0。
+ * 例: 9:00-17:00 は休憩と60分重なる→60分控除。午前だけ(9:00-12:00)は0分。
+ */
+const overlapBreakMinutes = (
+  clockIn: Date,
+  clockOut: Date,
+  baseDate: string
+): number => {
+  const breakStart = new Date(localDateTimeToISO(`${baseDate}T${BREAK_START_HHMM}`));
+  const breakEnd = new Date(localDateTimeToISO(`${baseDate}T${BREAK_END_HHMM}`));
+  const start = Math.max(clockIn.getTime(), breakStart.getTime());
+  const end = Math.min(clockOut.getTime(), breakEnd.getTime());
+  const overlapMs = end - start;
+  return overlapMs > 0 ? overlapMs / (1000 * 60) : 0;
+};
+
 /**
  * 勤務時間とステータスを計算（打刻・修正・再計算・集計の単一の信頼できる計算関数）
  *
@@ -88,8 +110,12 @@ export const calculateWorkTimeAndStatus = (
     return { actualWorkHours: 0, status: '設定エラー', overtimeMinutes: 0 };
   }
 
-  // 実労働時間の計算（出勤から退勤まで・実打刻ベース＝拘束時間。休憩は控除しない）
-  const actualWorkMinutes = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60);
+  // 実労働時間の計算（出勤から退勤まで・実打刻ベース）。
+  // 所定昼休憩(JST 12:00〜13:00)と重なった分のみ控除する。
+  // 午前のみ・午後のみ勤務など休憩を跨がない場合は控除されない。
+  const grossWorkMinutes = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60);
+  const breakMinutes = overlapBreakMinutes(clockIn, clockOut, baseDate);
+  const actualWorkMinutes = Math.max(0, grossWorkMinutes - breakMinutes);
   const actualWorkHours = Math.round((actualWorkMinutes / 60) * 100) / 100;
 
   // 残業時間（分）：退勤時刻 - 所定退勤時刻。マイナスなら0。
