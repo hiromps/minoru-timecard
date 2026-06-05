@@ -323,7 +323,7 @@ const TimeClock: React.FC = () => {
                       </div>
                       <div className="record-hours">
                         <div className="hours-label">⏰ 勤務時間</div>
-                        <div className="hours-value">{formatWorkHours(record.work_hours)}</div>
+                        <div className="hours-value">{record.clock_out_time ? formatWorkHours(record.work_hours) : '—'}</div>
                       </div>
                     </div>
                   </div>

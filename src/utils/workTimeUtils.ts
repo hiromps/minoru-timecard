@@ -44,8 +44,12 @@ export const calculateWorkTimeAndStatus = (
   workEndTime: string = "17:00:00",
   recordDate?: string
 ): WorkTimeResult => {
-  // デフォルト値
+  // 出勤打刻が無い場合。退勤だけ存在するのは不正データなので '設定エラー'。
   if (!clockInTime) {
+    if (clockOutTime) {
+      console.warn('⚠️ 不正データ: 出勤なしで退勤あり', { clockInTime, clockOutTime });
+      return { actualWorkHours: 0, status: '設定エラー', overtimeMinutes: 0 };
+    }
     return { actualWorkHours: 0, status: '通常', overtimeMinutes: 0 };
   }
 
@@ -57,6 +61,13 @@ export const calculateWorkTimeAndStatus = (
   const baseDate = recordDate ?? getJSTDate(clockIn);
   const workStart = new Date(localDateTimeToISO(`${baseDate}T${toHHMM(workStartTime)}`));
   const workEnd = new Date(localDateTimeToISO(`${baseDate}T${toHHMM(workEndTime)}`));
+
+  // 所定終業 <= 所定始業 は設定ミス（夜勤は現状非対応）。誤判定を黙って生成せず
+  // '設定エラー' を返す。社員マスタの work_start_time/work_end_time の入力ミス検出。
+  if (workEnd.getTime() <= workStart.getTime()) {
+    console.warn('⚠️ 設定ミス: 所定終業 <= 所定始業', { workStartTime, workEndTime, baseDate });
+    return { actualWorkHours: 0, status: '設定エラー', overtimeMinutes: 0 };
+  }
 
   // 遅刻判定：出勤時刻 > 設定された出勤時刻
   const isLate = clockIn > workStart;
@@ -70,18 +81,27 @@ export const calculateWorkTimeAndStatus = (
     };
   }
 
-  // 実労働時間の計算（出勤から退勤まで・実打刻ベース）
-  const actualWorkMinutes = Math.max(0, (clockOut.getTime() - clockIn.getTime()) / (1000 * 60));
+  // 退勤 <= 出勤 は不正データ（負の勤務時間）。黙って0扱い・通常判定せず
+  // '設定エラー' を返す。DB制約 check_clock_times とも整合。
+  if (clockOut.getTime() <= clockIn.getTime()) {
+    console.warn('⚠️ 不正データ: 退勤 <= 出勤', { clockInTime, clockOutTime });
+    return { actualWorkHours: 0, status: '設定エラー', overtimeMinutes: 0 };
+  }
+
+  // 実労働時間の計算（出勤から退勤まで・実打刻ベース＝拘束時間。休憩は控除しない）
+  const actualWorkMinutes = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60);
   const actualWorkHours = Math.round((actualWorkMinutes / 60) * 100) / 100;
+
+  // 残業時間（分）：退勤時刻 - 所定退勤時刻。マイナスなら0。
+  const overtimeMinutes = Math.max(0, Math.round((clockOut.getTime() - workEnd.getTime()) / (1000 * 60)));
 
   // 早退判定：退勤時刻 < 設定された退勤時刻
   const isEarlyDeparture = clockOut < workEnd;
 
-  // 残業判定：退勤時刻 > 設定された退勤時刻
-  const isOvertime = clockOut > workEnd;
-
-  // 残業時間（分）：退勤時刻 - 所定退勤時刻。マイナスなら0。isOvertime と同じ workEnd から導出。
-  const overtimeMinutes = Math.max(0, Math.round((clockOut.getTime() - workEnd.getTime()) / (1000 * 60)));
+  // 残業判定は overtimeMinutes（丸め後）と同一基準にする。
+  // 厳密比較(clockOut > workEnd)だと終業+1〜29秒で「残業ステータスなのに残業0分」
+  // という矛盾レコードが生じるため、丸め後の分数>0 を残業の唯一の基準とする。
+  const isOvertime = overtimeMinutes > 0;
 
   // 複合ステータス対応
   if (isLate && isEarlyDeparture) {

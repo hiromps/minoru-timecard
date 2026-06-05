@@ -25,11 +25,16 @@ export interface TimeRecordWithEmployee {
 export interface MonthlySummaryRow {
   employee_id: string;
   employee_name: string;
+  /** 勤務日数（出勤・退勤がそろった完了日のみ） */
   workDays: number;
+  /** 未退勤（退勤打刻忘れ）の件数。可視化用。 */
+  openDays: number;
   totalWorkHours: number;
   totalOvertimeMinutes: number;
   lateCount: number;
   earlyLeaveCount: number;
+  /** 社員マスタに存在しない（退職等）社員の記録か */
+  isOrphan: boolean;
 }
 
 // 全打刻記録を取得（管理者用）
@@ -49,6 +54,8 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
         work_hours,
         overtime_minutes,
         status,
+        is_manual_entry,
+        approved_by,
         created_at,
         updated_at
       `)
@@ -115,7 +122,7 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
         work_hours: record.work_hours || 0,
         overtime_minutes: record.overtime_minutes || 0,
         status: record.status,
-        is_manual_entry: false, // 基本的に自動入力として扱う
+        is_manual_entry: record.is_manual_entry ?? false,
         approved_by: record.approved_by,
         created_at: record.created_at,
         updated_at: record.updated_at,
@@ -496,6 +503,7 @@ export const getMonthlySummary = async (year: number, month: number): Promise<Mo
     let records: {
       employee_id: string;
       clock_in_time: string | null;
+      clock_out_time: string | null;
       work_hours: number | null;
       overtime_minutes: number | null;
       status: string;
@@ -512,6 +520,7 @@ export const getMonthlySummary = async (year: number, month: number): Promise<Mo
         .map(r => ({
           employee_id: r.employee_id,
           clock_in_time: r.clock_in_time,
+          clock_out_time: r.clock_out_time,
           work_hours: r.work_hours,
           overtime_minutes: r.overtime_minutes,
           status: r.status
@@ -530,7 +539,7 @@ export const getMonthlySummary = async (year: number, month: number): Promise<Mo
 
       const { data: recordsData, error: recordsError } = await supabase
         .from('time_records')
-        .select('employee_id, clock_in_time, work_hours, overtime_minutes, status')
+        .select('employee_id, clock_in_time, clock_out_time, work_hours, overtime_minutes, status')
         .gte('record_date', startDate)
         .lte('record_date', endDate);
 
@@ -548,34 +557,59 @@ export const getMonthlySummary = async (year: number, month: number): Promise<Mo
         employee_id: emp.employee_id,
         employee_name: emp.name,
         workDays: 0,
+        openDays: 0,
         totalWorkHours: 0,
         totalOvertimeMinutes: 0,
         lateCount: 0,
-        earlyLeaveCount: 0
+        earlyLeaveCount: 0,
+        isOrphan: false
       });
     });
+
+    // 総労働時間は日次の丸め済み work_hours を合算すると丸め誤差が累積するため、
+    // 出退勤がそろう日は実打刻から「分」で積算し、最後に時間へ変換して一度だけ丸める。
+    const totalWorkMinutesMap = new Map<string, number>();
 
     // 打刻記録を集計
     records.forEach(record => {
       let row = summaryMap.get(record.employee_id);
       if (!row) {
-        // 社員マスタに存在しない記録もフォールバックで集計
+        // 社員マスタに存在しない記録（退職者等）もフォールバックで集計しつつ明示。
         row = {
           employee_id: record.employee_id,
-          employee_name: `社員${record.employee_id}`,
+          employee_name: `(退職者) ${record.employee_id}`,
           workDays: 0,
+          openDays: 0,
           totalWorkHours: 0,
           totalOvertimeMinutes: 0,
           lateCount: 0,
-          earlyLeaveCount: 0
+          earlyLeaveCount: 0,
+          isOrphan: true
         };
         summaryMap.set(record.employee_id, row);
       }
 
-      if (record.clock_in_time) {
+      const hasIn = !!record.clock_in_time;
+      const hasOut = !!record.clock_out_time;
+
+      if (hasIn && hasOut) {
+        // 完了日のみ勤務日数に計上
         row.workDays += 1;
+        // 実打刻から分単位で積算（丸め誤差を避ける）
+        const inMs = new Date(record.clock_in_time as string).getTime();
+        const outMs = new Date(record.clock_out_time as string).getTime();
+        const prev = totalWorkMinutesMap.get(record.employee_id) || 0;
+        if (!isNaN(inMs) && !isNaN(outMs) && outMs > inMs) {
+          totalWorkMinutesMap.set(record.employee_id, prev + (outMs - inMs) / (1000 * 60));
+        } else {
+          // 不正打刻はフォールバックで保存済み work_hours を分換算
+          totalWorkMinutesMap.set(record.employee_id, prev + (record.work_hours || 0) * 60);
+        }
+      } else if (hasIn && !hasOut) {
+        // 退勤忘れ（未退勤）。勤務日数には数えず、件数だけ可視化する。
+        row.openDays += 1;
       }
-      row.totalWorkHours += record.work_hours || 0;
+
       row.totalOvertimeMinutes += record.overtime_minutes || 0;
       if (record.status && record.status.includes('遅刻')) {
         row.lateCount += 1;
@@ -585,11 +619,11 @@ export const getMonthlySummary = async (year: number, month: number): Promise<Mo
       }
     });
 
-    // 小数誤差を丸めて配列化
+    // 分の積算を時間へ変換し、最後に一度だけ丸めて配列化
     const result = Array.from(summaryMap.values())
       .map(row => ({
         ...row,
-        totalWorkHours: Math.round(row.totalWorkHours * 100) / 100
+        totalWorkHours: Math.round(((totalWorkMinutesMap.get(row.employee_id) || 0) / 60) * 100) / 100
       }))
       .sort((a, b) => a.employee_id.localeCompare(b.employee_id));
 

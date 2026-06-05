@@ -3,6 +3,55 @@ import { demoEmployeeService, demoTimeRecordService } from './demoDatabase'
 import { getJSTDate, getJSTMonthRange } from '../utils/dateUtils'
 import { calculateWorkTimeAndStatus } from '../utils/workTimeUtils'
 
+/**
+ * 退勤対象の出勤レコードを取得する（本番Supabase経路用）。
+ *
+ * 1) まず退勤打刻日のJST日付（today）のレコードを探す。
+ * 2) 見つからなければ、日跨ぎ深夜勤務に対応するため、当該社員の
+ *    未退勤(clock_out_time IS NULL)レコードのうち最新の出勤を対象にする。
+ *
+ * .single() は0行/複数行で例外になり、通信障害等のインフラエラーまで
+ * 「記録なし」に潰してしまうため使わない。重複行が万一存在しても、
+ * 未退勤を優先しつつ最新の出勤を選ぶことで全機能停止を避ける。
+ *
+ * @returns 対象レコード。見つからなければ null。インフラエラー時は throw。
+ */
+async function findOpenRecordForClockOut(
+  employeeId: string,
+  today: string
+): Promise<TimeRecord | null> {
+  // 1) 退勤日のレコード（複数行に耐えるため配列で受ける）
+  const { data: sameDay, error: sameDayError } = await supabase
+    .from('time_records')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .eq('record_date', today)
+    .order('clock_in_time', { ascending: false })
+  if (sameDayError) {
+    console.error('❌ 本日記録取得エラー:', sameDayError)
+    throw new Error('本日の出勤記録の取得に失敗しました: ' + sameDayError.message)
+  }
+  if (sameDay && sameDay.length > 0) {
+    // 未退勤があればそれを、無ければ最新の出勤を返す
+    const open = sameDay.find((r: TimeRecord) => !r.clock_out_time)
+    return open ?? sameDay[0]
+  }
+
+  // 2) 日跨ぎ勤務: 当該社員の最新の未退勤レコードにフォールバック
+  const { data: openRecords, error: openError } = await supabase
+    .from('time_records')
+    .select('*')
+    .eq('employee_id', employeeId)
+    .is('clock_out_time', null)
+    .order('clock_in_time', { ascending: false })
+    .limit(1)
+  if (openError) {
+    console.error('❌ 未退勤記録取得エラー:', openError)
+    throw new Error('出勤記録の取得に失敗しました: ' + openError.message)
+  }
+  return openRecords && openRecords.length > 0 ? openRecords[0] : null
+}
+
 // 社員関連の操作
 export const employeeService = {
   // 全社員取得
@@ -150,6 +199,22 @@ export const timeRecordService = {
     const today = getJSTDate(now)
     const currentTime = now.toISOString()
 
+    // 二重出勤の事前チェック。DBの部分ユニーク索引違反による不可解な
+    // 「打刻に失敗しました」ではなく、明確なメッセージで弾く。
+    const { data: existing, error: existingError } = await supabase
+      .from('time_records')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .eq('record_date', today)
+      .maybeSingle()
+    if (existingError) {
+      console.error('❌ 既存記録確認エラー:', existingError)
+      throw new Error('出勤記録の確認に失敗しました: ' + existingError.message)
+    }
+    if (existing) {
+      throw new Error('本日は既に出勤打刻済みです')
+    }
+
     // ステータス判定（統一関数を使用・退勤前なので clockOut=null）
     const { status } = calculateWorkTimeAndStatus(
       currentTime,
@@ -211,21 +276,10 @@ export const timeRecordService = {
     const today = getJSTDate(now)
     const currentTime = now.toISOString()
 
-    // 本日の出勤記録を取得
-    // .single() は0行/複数行でerrorを返すため、通信障害・RLS拒否等の
-    // インフラエラーまで「記録なし」に潰れてしまう。.maybeSingle() を使い
-    // インフラエラーと「未出勤」を区別する（getTodayRecord と同じ方針）。
-    const { data: todayRecord, error: fetchError } = await supabase
-      .from('time_records')
-      .select('*')
-      .eq('employee_id', employeeId)
-      .eq('record_date', today)
-      .maybeSingle()
-
-    if (fetchError) {
-      console.error('❌ 本日記録取得エラー:', fetchError)
-      throw new Error('本日の出勤記録の取得に失敗しました: ' + fetchError.message)
-    }
+    // 退勤対象の出勤記録を取得する（日跨ぎ勤務・重複行に耐性を持たせる）。
+    // .single() は0行/複数行でerrorになり、通信障害等のインフラエラーまで
+    // 「記録なし」に潰れていたため使わない。
+    const todayRecord = await findOpenRecordForClockOut(employeeId, today)
     if (!todayRecord) {
       throw new Error('本日の出勤記録が見つかりません')
     }
@@ -287,6 +341,21 @@ export const timeRecordService = {
 
     const clockInTime = new Date(specifiedTime)
     const today = getJSTDate(clockInTime)
+
+    // 二重出勤の事前チェック（部分ユニーク索引違反の不可解なエラーを防ぐ）
+    const { data: existing, error: existingError } = await supabase
+      .from('time_records')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .eq('record_date', today)
+      .maybeSingle()
+    if (existingError) {
+      console.error('❌ 既存記録確認エラー:', existingError)
+      throw new Error('出勤記録の確認に失敗しました: ' + existingError.message)
+    }
+    if (existing) {
+      throw new Error('該当日は既に出勤打刻済みです')
+    }
 
     // ステータス判定（直行・直帰モードの場合は通常固定、それ以外は統一関数で判定）
     let status: TimeRecordStatus = '通常'
@@ -352,21 +421,8 @@ export const timeRecordService = {
     const clockOutTime = new Date(specifiedTime)
     const today = getJSTDate(clockOutTime)
 
-    // 本日の出勤記録を取得
-    // .single() は0行/複数行でerrorを返すため、通信障害・RLS拒否等の
-    // インフラエラーまで「記録なし」に潰れてしまう。.maybeSingle() を使い
-    // インフラエラーと「未出勤」を区別する（getTodayRecord と同じ方針）。
-    const { data: todayRecord, error: fetchError } = await supabase
-      .from('time_records')
-      .select('*')
-      .eq('employee_id', employeeId)
-      .eq('record_date', today)
-      .maybeSingle()
-
-    if (fetchError) {
-      console.error('❌ 本日記録取得エラー:', fetchError)
-      throw new Error('本日の出勤記録の取得に失敗しました: ' + fetchError.message)
-    }
+    // 退勤対象の出勤記録を取得する（日跨ぎ勤務・重複行に耐性を持たせる）。
+    const todayRecord = await findOpenRecordForClockOut(employeeId, today)
     if (!todayRecord) {
       throw new Error('本日の出勤記録が見つかりません')
     }
@@ -428,20 +484,27 @@ export const timeRecordService = {
     const today = getJSTDate()
     console.log('📅 本日記録取得中:', { employeeId, today })
 
+    // 重複行が万一存在しても .maybeSingle() の例外で本日状況表示が壊れない
+    // よう、配列で受けて未退勤優先・最新の出勤を返す。
     const { data, error } = await supabase
       .from('time_records')
       .select('*')
       .eq('employee_id', employeeId)
       .eq('record_date', today)
-      .maybeSingle()
+      .order('clock_in_time', { ascending: false })
 
     if (error) {
       console.error('❌ 本日記録取得エラー:', error)
       throw error
     }
 
-    console.log('✅ 本日記録取得結果:', data ? '記録あり' : '記録なし')
-    return data || null
+    if (!data || data.length === 0) {
+      console.log('✅ 本日記録取得結果: 記録なし')
+      return null
+    }
+    const open = data.find((r: TimeRecord) => !r.clock_out_time)
+    console.log('✅ 本日記録取得結果: 記録あり')
+    return open ?? data[0]
   },
 
   // 社員の打刻記録取得

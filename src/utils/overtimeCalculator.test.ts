@@ -1,16 +1,19 @@
 /**
- * 残業判定ロジックのテスト
+ * 時刻⇔分の変換・表示フォーマッタのテスト
+ *
+ * 注: 勤務時間・残業・ステータスの計算は workTimeUtils.calculateWorkTimeAndStatus
+ * に一本化されたため、本ファイルが扱っていた calculateAttendance（別系統の
+ * 二重実装）と社員名ハードコード表は削除済み。計算ロジックのテストは
+ * workTimeUtils.test.ts を参照。
  */
 
 import {
     timeToMinutes,
     minutesToTime,
     minutesToHoursDisplay,
-    getRegularEndMinutes,
-    calculateAttendance,
 } from './overtimeCalculator';
 
-describe('残業判定ロジック', () => {
+describe('時刻フォーマッタ', () => {
     describe('timeToMinutes', () => {
         test.each([
             { input: '09:00', expected: 540 },
@@ -44,87 +47,6 @@ describe('残業判定ロジック', () => {
             { input: 480, expected: '8時間' },
         ])('minutesToHoursDisplay($input) = "$expected"', ({ input, expected }) => {
             expect(minutesToHoursDisplay(input)).toBe(expected);
-        });
-    });
-
-    describe('getRegularEndMinutes - 社員別所定退勤時刻', () => {
-        test('大﨑 香奈子 → 16:00 (960分)', () => {
-            expect(getRegularEndMinutes('大﨑 香奈子')).toBe(960);
-        });
-
-        test('小齊平 千明 → 15:00 (900分)', () => {
-            expect(getRegularEndMinutes('小齊平 千明')).toBe(900);
-        });
-
-        test('その他の社員 → 17:00 (1020分)', () => {
-            expect(getRegularEndMinutes('田中 太郎')).toBe(1020);
-            expect(getRegularEndMinutes('山田 花子')).toBe(1020);
-        });
-    });
-
-    describe('calculateAttendance - 残業判定', () => {
-        test('大﨑 香奈子: 08:30-16:30 → 残業30分', () => {
-            const result = calculateAttendance('大﨑 香奈子', '08:30', '16:30');
-            expect(result.workStartTime).toBe('09:00');
-            expect(result.regularEndTime).toBe('16:00');
-            expect(result.workMinutes).toBe(450);
-            expect(result.overtimeMinutes).toBe(30);
-        });
-
-        test('大﨑 香奈子: 09:00-16:00 → 残業なし', () => {
-            const result = calculateAttendance('大﨑 香奈子', '09:00', '16:00');
-            expect(result.workStartTime).toBe('09:00');
-            expect(result.regularEndTime).toBe('16:00');
-            expect(result.workMinutes).toBe(420);
-            expect(result.overtimeMinutes).toBe(0);
-        });
-
-        test('小齊平 千明: 08:00-17:00 → 残業120分', () => {
-            const result = calculateAttendance('小齊平 千明', '08:00', '17:00');
-            expect(result.workStartTime).toBe('09:00');
-            expect(result.regularEndTime).toBe('15:00');
-            expect(result.workMinutes).toBe(480);
-            expect(result.overtimeMinutes).toBe(120);
-        });
-
-        test('小齊平 千明: 09:00-15:00 → 残業なし', () => {
-            const result = calculateAttendance('小齊平 千明', '09:00', '15:00');
-            expect(result.workStartTime).toBe('09:00');
-            expect(result.regularEndTime).toBe('15:00');
-            expect(result.workMinutes).toBe(360);
-            expect(result.overtimeMinutes).toBe(0);
-        });
-
-        test('その他社員: 08:45-18:30 → 残業90分', () => {
-            const result = calculateAttendance('田中 太郎', '08:45', '18:30');
-            expect(result.workStartTime).toBe('09:00');
-            expect(result.regularEndTime).toBe('17:00');
-            expect(result.workMinutes).toBe(570);
-            expect(result.overtimeMinutes).toBe(90);
-        });
-
-        test('その他社員: 09:00-17:00 → 残業なし', () => {
-            const result = calculateAttendance('山田 花子', '09:00', '17:00');
-            expect(result.workStartTime).toBe('09:00');
-            expect(result.regularEndTime).toBe('17:00');
-            expect(result.workMinutes).toBe(480);
-            expect(result.overtimeMinutes).toBe(0);
-        });
-
-        test('早出テスト: 07:00出勤でも09:00扱い', () => {
-            const result = calculateAttendance('鈴木 一郎', '07:00', '17:00');
-            expect(result.workStartMinutes).toBe(540); // 09:00
-            expect(result.workStartTime).toBe('09:00');
-            expect(result.workMinutes).toBe(480);
-            expect(result.overtimeMinutes).toBe(0);
-        });
-
-        test('早退テスト: 所定前退勤は残業なし', () => {
-            const result = calculateAttendance('佐藤 次郎', '09:00', '16:00');
-            expect(result.workStartTime).toBe('09:00');
-            expect(result.regularEndTime).toBe('17:00');
-            expect(result.workMinutes).toBe(420);
-            expect(result.overtimeMinutes).toBe(0);
         });
     });
 });
