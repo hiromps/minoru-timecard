@@ -66,7 +66,7 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
       );
       expect(r.status).toBe('通常');
       expect(r.overtimeMinutes).toBe(0);
-      expect(r.actualWorkHours).toBe(8);
+      expect(r.actualWorkHours).toBe(7); // 9-17時=8h、昼休憩12-13時を控除して7h
     });
 
     it('JST09:30出勤は遅刻', () => {
@@ -136,6 +136,45 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
       const r = calculateWorkTimeAndStatus(null, null, '09:00:00', '17:00:00', '2026-05-27');
       expect(r.status).toBe('通常');
       expect(r.overtimeMinutes).toBe(0);
+    });
+  });
+
+  describe('昼休憩(12:00-13:00)の控除', () => {
+    it('9:00-17:00 は休憩1h控除で実労働7h', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00
+        '2026-05-27T08:00:00.000Z', // JST 17:00
+        '09:00:00', '17:00:00', '2026-05-27'
+      );
+      expect(r.actualWorkHours).toBe(7);
+    });
+
+    it('午前のみ勤務 9:00-12:00 は休憩と重ならず3h', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00
+        '2026-05-27T03:00:00.000Z', // JST 12:00 ちょうど
+        '09:00:00', '17:00:00', '2026-05-27'
+      );
+      expect(r.actualWorkHours).toBe(3);
+    });
+
+    it('午後のみ勤務 13:00-17:00 は休憩と重ならず4h', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T04:00:00.000Z', // JST 13:00 ちょうど
+        '2026-05-27T08:00:00.000Z', // JST 17:00
+        '09:00:00', '17:00:00', '2026-05-27'
+      );
+      expect(r.actualWorkHours).toBe(4);
+    });
+
+    it('11:30-12:30 は休憩と30分だけ重なり実労働0.5h', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T02:30:00.000Z', // JST 11:30
+        '2026-05-27T03:30:00.000Z', // JST 12:30
+        '09:00:00', '17:00:00', '2026-05-27'
+      );
+      // gross 60分 - 重なり30分 = 30分 = 0.5h
+      expect(r.actualWorkHours).toBe(0.5);
     });
   });
 

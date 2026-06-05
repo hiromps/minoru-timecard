@@ -134,6 +134,8 @@ export interface TimeRecord {
   status: TimeRecordStatus
   work_hours: number
   overtime_minutes: number
+  /** 直行・直帰モードで打刻された記録か。true なら遅刻/早退/残業判定を無効化。 */
+  is_direct_work?: boolean
   created_at: string
   updated_at: string
 }

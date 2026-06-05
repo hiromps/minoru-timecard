@@ -153,18 +153,7 @@ export const correctTimeRecordByDeleteAndCreate = async (
     const formattedClockIn = clock_in_time ? localDateTimeToISO(clock_in_time) : null;
     const formattedClockOut = clock_out_time ? localDateTimeToISO(clock_out_time) : null;
 
-    // トランザクション的な処理のため、まず削除
-    const { error: deleteError } = await supabase
-      .from('time_records')
-      .delete()
-      .eq('employee_id', employee_id)
-      .eq('record_date', record_date);
-
-    if (deleteError) {
-      console.error('Error deleting record:', deleteError);
-      throw new Error('既存レコードの削除に失敗しました');
-    }
-
+    // 計算は「削除より前」に行う。失敗してもデータを壊さない。
     // 社員の個別勤務時間を取得
     const { data: employeeData, error: employeeError } = await supabase
       .from('employees')
@@ -192,28 +181,28 @@ export const correctTimeRecordByDeleteAndCreate = async (
 
     console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分`);
 
-    // 新しいレコードを作成
-    const { data: newRecord, error: insertError } = await supabase
-      .from('time_records')
-      .insert({
-        employee_id,
-        record_date,
-        clock_in_time: formattedClockIn,
-        clock_out_time: formattedClockOut,
-        work_hours,
-        overtime_minutes,
-        status
-      })
-      .select()
-      .single();
+    // 削除→作成を単一トランザクションのRPCで実行する。
+    // 従来は delete と insert が別呼び出しで、insert が制約違反等で失敗すると
+    // 削除済みのその日の記録が消失していた。RPC なら insert 失敗時に delete も
+    // 自動ロールバックされ、記録消失を防げる。
+    const { data: newRecord, error: rpcError } = await supabase.rpc('correct_time_record', {
+      p_employee_id: employee_id,
+      p_record_date: record_date,
+      p_clock_in_time: formattedClockIn,
+      p_clock_out_time: formattedClockOut,
+      p_work_hours: work_hours,
+      p_overtime_minutes: overtime_minutes,
+      p_status: status,
+      p_is_direct_work: false
+    });
 
-    if (insertError) {
-      console.error('Error inserting record:', insertError);
-      throw new Error('新しいレコードの作成に失敗しました');
+    if (rpcError) {
+      console.error('Error correcting record (RPC):', rpcError);
+      throw new Error('打刻記録の修正に失敗しました: ' + rpcError.message);
     }
 
     // 監査ログを記録
-    await logCorrectionAction(employee_id, record_date, 'DELETE', reason, newRecord?.id);
+    await logCorrectionAction(employee_id, record_date, 'DELETE', reason, (newRecord as any)?.id);
 
   } catch (error) {
     console.error('Error in correctTimeRecordByDeleteAndCreate:', error);
@@ -377,7 +366,7 @@ export const recalculateAllStatus = async (): Promise<void> => {
     // 全ての打刻記録を取得（record_date はステータス判定のJST基準日に使用）
     const { data: records, error: recordsError } = await supabase
       .from('time_records')
-      .select('id, employee_id, record_date, clock_in_time, clock_out_time');
+      .select('id, employee_id, record_date, clock_in_time, clock_out_time, status, is_direct_work');
 
     if (recordsError) {
       console.error('Error fetching time records:', recordsError);
@@ -417,13 +406,18 @@ export const recalculateAllStatus = async (): Promise<void> => {
         record.record_date
       );
 
+      // 直行・直帰の記録は遅刻/早退/残業判定を無効化する仕様のため、
+      // 再計算で上書きせずステータスを維持し残業は0にする（勤務時間は再計算値）。
+      const status = record.is_direct_work === true ? record.status : workTimeResult.status;
+      const overtimeMinutes = record.is_direct_work === true ? 0 : workTimeResult.overtimeMinutes;
+
       // ステータス・勤務時間・残業時間を再計算して更新
       const { error: updateError } = await supabase
         .from('time_records')
         .update({
-          status: workTimeResult.status,
+          status: status,
           work_hours: workTimeResult.actualWorkHours,
-          overtime_minutes: workTimeResult.overtimeMinutes,
+          overtime_minutes: overtimeMinutes,
           updated_at: new Date().toISOString()
         })
         .eq('id', record.id);
