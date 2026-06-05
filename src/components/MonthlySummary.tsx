@@ -68,6 +68,7 @@ const MonthlySummary: React.FC = () => {
                 <th>社員ID</th>
                 <th>氏名</th>
                 <th>勤務日数</th>
+                <th>未退勤</th>
                 <th>総労働時間</th>
                 <th>残業時間合計</th>
                 <th>遅刻回数</th>
@@ -77,7 +78,7 @@ const MonthlySummary: React.FC = () => {
             <tbody>
               {rows.length === 0 ? (
                 <tr>
-                  <td colSpan={7} className="summary-no-data">該当する記録がありません</td>
+                  <td colSpan={8} className="summary-no-data">該当する記録がありません</td>
                 </tr>
               ) : (
                 rows.map((row) => (
@@ -85,6 +86,7 @@ const MonthlySummary: React.FC = () => {
                     <td data-label="社員ID">{row.employee_id}</td>
                     <td data-label="氏名">{row.employee_name}</td>
                     <td data-label="勤務日数">{row.workDays}日</td>
+                    <td data-label="未退勤">{row.openDays > 0 ? `⚠️ ${row.openDays}件` : '—'}</td>
                     <td data-label="総労働時間">{formatWorkHours(row.totalWorkHours)}</td>
                     <td data-label="残業時間合計">{minutesToHoursDisplay(row.totalOvertimeMinutes)}</td>
                     <td data-label="遅刻回数">{row.lateCount}回</td>

@@ -86,6 +86,30 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+
+    // 送信前バリデーション。DB制約(check_clock_times: 退勤>出勤,
+    // check_work_hours: 0..24) 違反による不可解な失敗を防ぐ。
+    // 特に「削除→作成」経路は非トランザクションのため、INSERT が制約違反で
+    // 失敗するとその日の記録が消失する。事前に弾くことでデータ消失を防止する。
+    if (formData.clock_in_time && formData.clock_out_time) {
+      // datetime-local 文字列同士の比較（同一基準で解釈されるため相対比較は安全）
+      const cin = new Date(formData.clock_in_time).getTime();
+      const cout = new Date(formData.clock_out_time).getTime();
+      if (isNaN(cin) || isNaN(cout)) {
+        alert('出勤・退勤時刻の形式が正しくありません');
+        return;
+      }
+      if (cout <= cin) {
+        alert('退勤時刻は出勤時刻より後にしてください');
+        return;
+      }
+      const hours = (cout - cin) / (1000 * 60 * 60);
+      if (hours > 24) {
+        alert('勤務時間が24時間を超えています。日付・時刻を確認してください');
+        return;
+      }
+    }
+
     onSubmit(formData);
   };
 

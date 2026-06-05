@@ -139,6 +139,71 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
     });
   });
 
+  describe('不正データ・設定ミスの検出（設定エラー）', () => {
+    it('退勤 <= 出勤（負の勤務時間）は設定エラー', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T08:00:00.000Z', // JST 17:00 出勤
+        '2026-05-27T00:00:00.000Z', // JST 09:00 退勤（出勤より前）
+        '09:00:00',
+        '17:00:00',
+        '2026-05-27'
+      );
+      expect(r.status).toBe('設定エラー');
+      expect(r.actualWorkHours).toBe(0);
+      expect(r.overtimeMinutes).toBe(0);
+    });
+
+    it('出勤なしで退勤ありは設定エラー', () => {
+      const r = calculateWorkTimeAndStatus(
+        null,
+        '2026-05-27T08:00:00.000Z',
+        '09:00:00',
+        '17:00:00',
+        '2026-05-27'
+      );
+      expect(r.status).toBe('設定エラー');
+    });
+
+    it('所定終業 <= 所定始業（社員設定ミス）は設定エラー', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z',
+        '2026-05-27T08:00:00.000Z',
+        '17:00:00', // 始業17:00
+        '08:00:00', // 終業08:00（始業より前=設定ミス）
+        '2026-05-27'
+      );
+      expect(r.status).toBe('設定エラー');
+      expect(r.overtimeMinutes).toBe(0);
+    });
+  });
+
+  describe('残業ステータスと残業分の整合（丸め境界）', () => {
+    it('所定終業+20秒（丸めで0分）は残業にならず通常', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00
+        '2026-05-27T08:00:20.000Z', // JST 17:00:20（所定+20秒）
+        '09:00:00',
+        '17:00:00',
+        '2026-05-27'
+      );
+      // round(20秒)=0分 → 残業0、ステータスも残業にしない（矛盾レコード防止）
+      expect(r.overtimeMinutes).toBe(0);
+      expect(r.status).toBe('通常');
+    });
+
+    it('所定終業+40秒（丸めで1分）は残業1分', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z',
+        '2026-05-27T08:00:40.000Z', // JST 17:00:40
+        '09:00:00',
+        '17:00:00',
+        '2026-05-27'
+      );
+      expect(r.overtimeMinutes).toBe(1);
+      expect(r.status).toBe('残業');
+    });
+  });
+
   describe('時刻文字列・recordDate省略の互換', () => {
     it('work時刻が "HH:MM" でも "HH:MM:SS" でも同じ結果', () => {
       const a = calculateWorkTimeAndStatus('2026-05-27T00:00:00.000Z', '2026-05-27T09:00:00.000Z', '09:00:00', '17:00:00', '2026-05-27');
