@@ -3,7 +3,7 @@ import './TimeClock.css';
 import { Employee, TimeRecord } from '../lib/supabase';
 import { employeeService, timeRecordService } from '../lib/database';
 import { formatWorkHours } from '../utils/timeUtils';
-import { localDateTimeToISO } from '../utils/dateUtils';
+import { localDateTimeToISO, getJSTDate } from '../utils/dateUtils';
 
 const TimeClock: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -107,7 +107,10 @@ const TimeClock: React.FC = () => {
         }
 
         // 指定時刻をISO形式に変換（タイムゾーンを考慮）
-        const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+        // 重要: 日付はJST基準で取得する。new Date().toISOString() はUTC日付を返すため、
+        // JSTの午前0時〜9時台では前日にズレ、退勤時刻が出勤時刻より前の絶対時刻になり、
+        // DB制約 check_clock_times (退勤 > 出勤) 違反で退勤できない不具合が発生していた。
+        const today = getJSTDate(); // YYYY-MM-DD（JST）
         const datetimeLocal = `${today}T${specifiedTime}`; // YYYY-MM-DDTHH:MM
         const isoTime = localDateTimeToISO(datetimeLocal);
 
