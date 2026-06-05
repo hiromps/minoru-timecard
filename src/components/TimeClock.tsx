@@ -179,14 +179,19 @@ const TimeClock: React.FC = () => {
 
   const formatTime = (timeString: string | null) => {
     if (!timeString) return '--:--';
-    return new Date(timeString).toLocaleTimeString('ja-JP', { 
-      hour: '2-digit', 
-      minute: '2-digit' 
+    const d = new Date(timeString);
+    if (isNaN(d.getTime())) return '--:--';
+    return d.toLocaleTimeString('ja-JP', {
+      hour: '2-digit',
+      minute: '2-digit'
     });
   };
 
-  const formatDate = (dateString: string) => {
-    return new Date(dateString).toLocaleDateString('ja-JP');
+  const formatDate = (dateString: string | null) => {
+    if (!dateString) return '—';
+    const d = new Date(dateString);
+    if (isNaN(d.getTime())) return '—';
+    return d.toLocaleDateString('ja-JP');
   };
 
   return (
@@ -224,9 +229,9 @@ const TimeClock: React.FC = () => {
               </div>
               <div className={`status-badge-today status-${
                 todayRecord.status === '通常' ? 'normal' :
-                todayRecord.status.includes('遅刻') ? 'late' :
-                todayRecord.status.includes('早退') ? 'early' :
-                todayRecord.status.includes('残業') ? 'overtime' : 'normal'
+                (todayRecord.status ?? '').includes('遅刻') ? 'late' :
+                (todayRecord.status ?? '').includes('早退') ? 'early' :
+                (todayRecord.status ?? '').includes('残業') ? 'overtime' : 'normal'
               }`}>
                 {todayRecord.status === '通常' ? '✅ 通常' :
                  todayRecord.status === '遅刻' ? '⚠️ 遅刻' :
@@ -292,9 +297,9 @@ const TimeClock: React.FC = () => {
                       <div className="record-date">{formatDate(record.record_date)}</div>
                       <div className={`record-status status-${
                         record.status === '通常' ? 'normal' :
-                        record.status.includes('遅刻') ? 'late' :
-                        record.status.includes('早退') ? 'early' :
-                        record.status.includes('残業') ? 'overtime' : 'normal'
+                        (record.status ?? '').includes('遅刻') ? 'late' :
+                        (record.status ?? '').includes('早退') ? 'early' :
+                        (record.status ?? '').includes('残業') ? 'overtime' : 'normal'
                       }`}>
                         {record.status === '通常' ? '✅ 通常' :
                          record.status === '遅刻' ? '⚠️ 遅刻' :
