@@ -212,14 +212,21 @@ export const timeRecordService = {
     const currentTime = now.toISOString()
 
     // 本日の出勤記録を取得
+    // .single() は0行/複数行でerrorを返すため、通信障害・RLS拒否等の
+    // インフラエラーまで「記録なし」に潰れてしまう。.maybeSingle() を使い
+    // インフラエラーと「未出勤」を区別する（getTodayRecord と同じ方針）。
     const { data: todayRecord, error: fetchError } = await supabase
       .from('time_records')
       .select('*')
       .eq('employee_id', employeeId)
       .eq('record_date', today)
-      .single()
+      .maybeSingle()
 
-    if (fetchError || !todayRecord) {
+    if (fetchError) {
+      console.error('❌ 本日記録取得エラー:', fetchError)
+      throw new Error('本日の出勤記録の取得に失敗しました: ' + fetchError.message)
+    }
+    if (!todayRecord) {
       throw new Error('本日の出勤記録が見つかりません')
     }
 
@@ -346,14 +353,21 @@ export const timeRecordService = {
     const today = getJSTDate(clockOutTime)
 
     // 本日の出勤記録を取得
+    // .single() は0行/複数行でerrorを返すため、通信障害・RLS拒否等の
+    // インフラエラーまで「記録なし」に潰れてしまう。.maybeSingle() を使い
+    // インフラエラーと「未出勤」を区別する（getTodayRecord と同じ方針）。
     const { data: todayRecord, error: fetchError } = await supabase
       .from('time_records')
       .select('*')
       .eq('employee_id', employeeId)
       .eq('record_date', today)
-      .single()
+      .maybeSingle()
 
-    if (fetchError || !todayRecord) {
+    if (fetchError) {
+      console.error('❌ 本日記録取得エラー:', fetchError)
+      throw new Error('本日の出勤記録の取得に失敗しました: ' + fetchError.message)
+    }
+    if (!todayRecord) {
       throw new Error('本日の出勤記録が見つかりません')
     }
 

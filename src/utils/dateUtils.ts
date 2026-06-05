@@ -44,6 +44,32 @@ export const getJSTDateFromISO = (isoString: string): string => {
 };
 
 /**
+ * UTCの絶対時刻（ISO文字列/timestamptz）を、datetime-local入力用の
+ * 「JSTの壁時計」文字列 (YYYY-MM-DDTHH:MM) に変換する。
+ * localDateTimeToISO の逆関数であり、ブラウザのタイムゾーンに依存しない。
+ *
+ * 重要: date.getHours() 等のローカルタイムゲッターを使うと、JST以外の
+ * ブラウザでは壁時計がズレ、それを localDateTimeToISO でJSTとして
+ * 保存し直すと絶対時刻が9時間等ずれて壊れる（過去の不具合）。
+ * 必ずJSTに変換してから getUTC* で各要素を取り出すこと。
+ *
+ * @param {string | null} isoString - UTCのISO文字列。null/空なら ''
+ * @returns {string} JST基準の "YYYY-MM-DDTHH:MM"（不正な日付なら ''）
+ */
+export const getJSTDateTimeLocal = (isoString: string | null): string => {
+  if (!isoString) return '';
+  const date = new Date(isoString);
+  if (isNaN(date.getTime())) return '';
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  const year = jst.getUTCFullYear();
+  const month = String(jst.getUTCMonth() + 1).padStart(2, '0');
+  const day = String(jst.getUTCDate()).padStart(2, '0');
+  const hours = String(jst.getUTCHours()).padStart(2, '0');
+  const minutes = String(jst.getUTCMinutes()).padStart(2, '0');
+  return `${year}-${month}-${day}T${hours}:${minutes}`;
+};
+
+/**
  * ローカル日時をISO形式に変換（日本時間として扱う）
  * 入力を常に日本時間（JST = UTC+9）として解釈し、UTCに変換する
  * @param {string} datetimeLocal - YYYY-MM-DDTHH:MM形式の文字列

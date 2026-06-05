@@ -3,6 +3,7 @@ import './TimeRecordManagement.css';
 import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, updateTimeRecord, getEmployees, TimeRecordWithEmployee, deleteTimeRecord, recalculateAllStatus } from '../lib/adminSupabase';
 import { formatWorkHours } from '../utils/timeUtils';
 import { minutesToHoursDisplay } from '../utils/overtimeCalculator';
+import { getJSTDateTimeLocal } from '../utils/dateUtils';
 
 // TimeRecordWithEmployeeを使用するため、ローカル定義は削除
 
@@ -68,22 +69,15 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
 
   useEffect(() => {
     if (record) {
-      const formatDateTimeLocal = (dateTimeString: string | null) => {
-        if (!dateTimeString) return '';
-        const date = new Date(dateTimeString);
-        const year = date.getFullYear();
-        const month = String(date.getMonth() + 1).padStart(2, '0');
-        const day = String(date.getDate()).padStart(2, '0');
-        const hours = String(date.getHours()).padStart(2, '0');
-        const minutes = String(date.getMinutes()).padStart(2, '0');
-        return `${year}-${month}-${day}T${hours}:${minutes}`;
-      };
-
+      // datetime-local の初期値はJST基準で生成する。ローカルタイムゲッター
+      // (getHours等) を使うと非JSTブラウザで壁時計がズレ、保存時に
+      // localDateTimeToISO がJSTとして解釈し直すため絶対時刻が壊れる。
+      // getJSTDateTimeLocal は localDateTimeToISO の逆関数で対称性を保証する。
       setFormData({
         employee_id: record.employee_id,
         record_date: record.record_date,
-        clock_in_time: formatDateTimeLocal(record.clock_in_time),
-        clock_out_time: formatDateTimeLocal(record.clock_out_time),
+        clock_in_time: getJSTDateTimeLocal(record.clock_in_time),
+        clock_out_time: getJSTDateTimeLocal(record.clock_out_time),
         reason: '管理者による時刻修正',
         action: 'update'
       });
@@ -352,7 +346,9 @@ const TimeRecordManagement: React.FC = () => {
 
   const formatTime = (dateTimeString: string | null) => {
     if (!dateTimeString) return '--:--';
-    return new Date(dateTimeString).toLocaleTimeString('ja-JP', {
+    const d = new Date(dateTimeString);
+    if (isNaN(d.getTime())) return '--:--';
+    return d.toLocaleTimeString('ja-JP', {
       hour: '2-digit',
       minute: '2-digit'
     });

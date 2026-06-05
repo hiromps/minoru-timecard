@@ -5,6 +5,7 @@ import MonthlySummary from './MonthlySummary';
 import './AdminDashboard.css';
 import { getAllTimeRecords } from '../lib/adminSupabase';
 import { formatWorkHoursForCSV, formatMinutesForCSV } from '../utils/timeUtils';
+import { getJSTDate } from '../utils/dateUtils';
 
 interface AdminDashboardProps {
   admin: any;
@@ -73,7 +74,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
       
       const a = document.createElement('a');
       a.href = url;
-      a.download = `timecard_records_${new Date().toISOString().split('T')[0]}.csv`;
+      a.download = `timecard_records_${getJSTDate()}.csv`;
       document.body.appendChild(a);
       a.click();
       window.URL.revokeObjectURL(url);
