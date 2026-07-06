@@ -236,3 +236,165 @@
     min-width: auto;
   }
 }
+/* ===== 給与データ出力（25日締め） ===== */
+.payroll-card {
+  border: 2px solid #2563eb;
+  border-radius: 12px;
+  padding: 20px;
+  margin-bottom: 24px;
+  background: #f5f9ff;
+}
+
+.payroll-card-head h3 {
+  margin: 0 0 6px;
+  color: #1e3a8a;
+  font-size: 20px;
+}
+
+.payroll-desc {
+  margin: 0 0 16px;
+  color: #475569;
+  font-size: 14px;
+}
+
+.payroll-period-picker {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.month-nav-btn {
+  width: 40px;
+  height: 40px;
+  border: 1px solid #93c5fd;
+  background: #fff;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  color: #2563eb;
+}
+
+.month-nav-btn:hover:not(:disabled) { background: #e0edff; }
+.month-nav-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.payroll-period-display {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  min-width: 260px;
+}
+
+.payroll-closing-label {
+  font-size: 18px;
+  font-weight: 700;
+  color: #1e3a8a;
+}
+
+.payroll-range {
+  font-size: 14px;
+  color: #475569;
+  margin-top: 2px;
+}
+
+.payroll-export-btn {
+  display: block;
+  width: 100%;
+  padding: 16px;
+  font-size: 17px;
+  font-weight: 700;
+  color: #fff;
+  background: #2563eb;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.payroll-export-btn:hover:not(:disabled) { background: #1d4ed8; }
+.payroll-export-btn:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.payroll-report { margin-top: 20px; }
+
+.payroll-summary {
+  padding: 12px 16px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+.payroll-summary.ok { background: #ecfdf5; border: 1px solid #10b981; }
+.payroll-summary.has-warning { background: #fffbeb; border: 1px solid #f59e0b; }
+.payroll-summary.has-error { background: #fef2f2; border: 1px solid #ef4444; }
+.payroll-summary-note { margin-top: 6px; font-size: 14px; }
+
+.payroll-issues { margin-bottom: 16px; }
+.payroll-issues h4 { margin: 0 0 8px; color: #334155; }
+.payroll-issues ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  max-height: 320px;
+  overflow-y: auto;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+.payroll-issues li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid #f1f5f9;
+  font-size: 14px;
+}
+.payroll-issues li:last-child { border-bottom: none; }
+.issue-badge {
+  flex-shrink: 0;
+  padding: 2px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #fff;
+}
+.issue-error .issue-badge { background: #ef4444; }
+.issue-warning .issue-badge { background: #f59e0b; }
+.issue-target { flex-shrink: 0; font-weight: 600; color: #334155; }
+.issue-msg { color: #475569; }
+.payroll-issues-hint { font-size: 13px; color: #64748b; margin: 8px 2px 0; }
+
+.payroll-totals h4 { margin: 0 0 8px; color: #334155; }
+.payroll-totals-scroll { overflow-x: auto; }
+.payroll-totals table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  background: #fff;
+}
+.payroll-totals th, .payroll-totals td {
+  padding: 8px 10px;
+  border: 1px solid #e2e8f0;
+  text-align: center;
+}
+.payroll-totals th { background: #eff6ff; color: #1e3a8a; }
+.payroll-totals td:first-child, .payroll-totals th:first-child { text-align: left; }
+.payroll-totals .row-has-issue { background: #fef2f2; }
+
+/* 任意期間（詳細） */
+.advanced-export { margin-top: 8px; }
+.advanced-toggle {
+  background: none;
+  border: none;
+  color: #2563eb;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 8px 0;
+}
+.advanced-body {
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 8px;
+}
+
+@media (max-width: 768px) {
+  .payroll-period-display { min-width: auto; }
+  .payroll-issues li { flex-direction: column; align-items: flex-start; gap: 4px; }
+}

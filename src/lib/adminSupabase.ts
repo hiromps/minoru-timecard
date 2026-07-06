@@ -13,6 +13,7 @@ export interface TimeRecordWithEmployee {
   work_hours: number;
   overtime_minutes: number;
   status: string;
+  is_direct_work?: boolean;
   is_manual_entry: boolean;
   approved_by?: string;
   created_at: string;
@@ -54,6 +55,7 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
         work_hours,
         overtime_minutes,
         status,
+        is_direct_work,
         is_manual_entry,
         approved_by,
         created_at,
@@ -122,6 +124,7 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
         work_hours: record.work_hours || 0,
         overtime_minutes: record.overtime_minutes || 0,
         status: record.status,
+        is_direct_work: record.is_direct_work ?? false,
         is_manual_entry: record.is_manual_entry ?? false,
         approved_by: record.approved_by,
         created_at: record.created_at,
