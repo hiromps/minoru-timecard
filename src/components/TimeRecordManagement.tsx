@@ -370,12 +370,10 @@ const TimeRecordManagement: React.FC = () => {
 
   const formatTime = (dateTimeString: string | null) => {
     if (!dateTimeString) return '--:--';
-    const d = new Date(dateTimeString);
-    if (isNaN(d.getTime())) return '--:--';
-    return d.toLocaleTimeString('ja-JP', {
-      hour: '2-digit',
-      minute: '2-digit'
-    });
+    // JST基準で "HH:MM" を表示（ブラウザのタイムゾーンに依存しない）。
+    // getJSTDateTimeLocal は 'YYYY-MM-DDTHH:MM' を返すので時刻部分を取り出す。
+    const jstLocal = getJSTDateTimeLocal(dateTimeString);
+    return jstLocal ? jstLocal.slice(11) : '--:--';
   };
 
   console.log('🔄 TimeRecordManagement render - timeRecords length:', timeRecords?.length || 0);

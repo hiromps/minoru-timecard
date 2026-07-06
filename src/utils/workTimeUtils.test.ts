@@ -1,4 +1,4 @@
-import { calculateWorkTimeAndStatus } from './workTimeUtils';
+import { calculateWorkTimeAndStatus, applyDirectWorkOverride } from './workTimeUtils';
 
 /**
  * 統一計算関数 calculateWorkTimeAndStatus のテスト
@@ -257,6 +257,43 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
       const r = calculateWorkTimeAndStatus('2026-05-27T00:00:00.000Z', '2026-05-27T09:00:00.000Z', '09:00:00', '17:00:00');
       expect(r.status).toBe('残業');
       expect(r.overtimeMinutes).toBe(60);
+    });
+  });
+
+  describe('applyDirectWorkOverride（直行直帰）', () => {
+    it('直行直帰でない場合は結果をそのまま返す', () => {
+      const r = { actualWorkHours: 7, status: '遅刻' as const, overtimeMinutes: 30 };
+      expect(applyDirectWorkOverride(r, false)).toEqual(r);
+    });
+
+    it('直行直帰なら遅刻を通常に、残業を0にする（労働時間は維持）', () => {
+      const r = { actualWorkHours: 7, status: '遅刻・残業' as const, overtimeMinutes: 30 };
+      const out = applyDirectWorkOverride(r, true);
+      expect(out.status).toBe('通常');
+      expect(out.overtimeMinutes).toBe(0);
+      expect(out.actualWorkHours).toBe(7);
+    });
+
+    it('直行直帰でも「設定エラー」はそのまま表面化させる', () => {
+      const r = { actualWorkHours: 0, status: '設定エラー' as const, overtimeMinutes: 0 };
+      expect(applyDirectWorkOverride(r, true).status).toBe('設定エラー');
+    });
+
+    it('遅刻の記録でも直行直帰なら通常扱い（実打刻から計算→上書き）', () => {
+      // JST 10:00出勤（遅刻）・JST 19:00退勤（残業）
+      const base = calculateWorkTimeAndStatus(
+        '2026-05-27T01:00:00.000Z',
+        '2026-05-27T10:00:00.000Z',
+        '09:00:00',
+        '17:00:00',
+        '2026-05-27'
+      );
+      expect(base.status).toBe('遅刻・残業');
+      const out = applyDirectWorkOverride(base, true);
+      expect(out.status).toBe('通常');
+      expect(out.overtimeMinutes).toBe(0);
+      // 労働時間は計上される（>0）
+      expect(out.actualWorkHours).toBeGreaterThan(0);
     });
   });
 });

@@ -1,5 +1,5 @@
 import { supabase, isDevMode } from './supabase';
-import { calculateWorkTimeAndStatus } from '../utils/workTimeUtils';
+import { calculateWorkTimeAndStatus, applyDirectWorkOverride } from '../utils/workTimeUtils';
 import { getJSTMonthRange, localDateTimeToISO } from '../utils/dateUtils';
 import { demoTimeRecordService, demoEmployeeService } from './demoDatabase';
 
@@ -169,20 +169,34 @@ export const correctTimeRecordByDeleteAndCreate = async (
       throw new Error('社員の勤務時間情報の取得に失敗しました');
     }
 
-    // 社員の個別勤務時間を使用してステータスを計算（record_date基準でJST判定）
-    const workTimeResult = calculateWorkTimeAndStatus(
-      formattedClockIn,
-      formattedClockOut,
-      employeeData.work_start_time,
-      employeeData.work_end_time,
-      record_date
+    // 既存記録の直行直帰フラグを引き継ぐ（修正で直行直帰を勝手に解除しない）。
+    // 削除→再作成でフラグが失われると、直行直帰なのに遅刻/早退/残業が誤付与される。
+    const { data: existingRecord } = await supabase
+      .from('time_records')
+      .select('is_direct_work')
+      .eq('employee_id', employee_id)
+      .eq('record_date', record_date)
+      .maybeSingle();
+    const isDirectWork = existingRecord?.is_direct_work === true;
+
+    // 社員の個別勤務時間を使用してステータスを計算（record_date基準でJST判定）。
+    // 直行直帰なら遅刻/早退/残業を無効化し「通常」扱い・残業0（労働時間は計上）。
+    const workTimeResult = applyDirectWorkOverride(
+      calculateWorkTimeAndStatus(
+        formattedClockIn,
+        formattedClockOut,
+        employeeData.work_start_time,
+        employeeData.work_end_time,
+        record_date
+      ),
+      isDirectWork
     );
 
     const work_hours = workTimeResult.actualWorkHours;
     const status = workTimeResult.status;
     const overtime_minutes = workTimeResult.overtimeMinutes;
 
-    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分`);
+    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分, 直行直帰: ${isDirectWork}`);
 
     // 削除→作成を単一トランザクションのRPCで実行する。
     // 従来は delete と insert が別呼び出しで、insert が制約違反等で失敗すると
@@ -196,7 +210,7 @@ export const correctTimeRecordByDeleteAndCreate = async (
       p_work_hours: work_hours,
       p_overtime_minutes: overtime_minutes,
       p_status: status,
-      p_is_direct_work: false
+      p_is_direct_work: isDirectWork
     });
 
     if (rpcError) {
@@ -239,20 +253,33 @@ export const updateTimeRecord = async (
       throw new Error('社員の勤務時間情報の取得に失敗しました');
     }
 
-    // 社員の個別勤務時間を使用してステータスを計算（record_date基準でJST判定）
-    const workTimeResult = calculateWorkTimeAndStatus(
-      formattedClockIn,
-      formattedClockOut,
-      employeeData.work_start_time,
-      employeeData.work_end_time,
-      record_date
+    // 既存記録の直行直帰フラグを取得（更新でも直行直帰の扱いを維持する）。
+    const { data: existingRecord } = await supabase
+      .from('time_records')
+      .select('is_direct_work')
+      .eq('employee_id', employee_id)
+      .eq('record_date', record_date)
+      .maybeSingle();
+    const isDirectWork = existingRecord?.is_direct_work === true;
+
+    // 社員の個別勤務時間を使用してステータスを計算（record_date基準でJST判定）。
+    // 直行直帰なら遅刻/早退/残業を無効化し「通常」扱い・残業0（労働時間は計上）。
+    const workTimeResult = applyDirectWorkOverride(
+      calculateWorkTimeAndStatus(
+        formattedClockIn,
+        formattedClockOut,
+        employeeData.work_start_time,
+        employeeData.work_end_time,
+        record_date
+      ),
+      isDirectWork
     );
 
     const work_hours = workTimeResult.actualWorkHours;
     const status = workTimeResult.status;
     const overtime_minutes = workTimeResult.overtimeMinutes;
 
-    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分`);
+    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分, 直行直帰: ${isDirectWork}`);
 
     const { data: updatedRecord, error } = await supabase
       .from('time_records')
@@ -401,26 +428,26 @@ export const recalculateAllStatus = async (): Promise<void> => {
       const employee = employeeMap.get(record.employee_id);
       if (!employee) continue;
 
-      const workTimeResult = calculateWorkTimeAndStatus(
-        record.clock_in_time,
-        record.clock_out_time,
-        employee.work_start_time,
-        employee.work_end_time,
-        record.record_date
+      // 直行・直帰の記録は遅刻/早退/残業判定を無効化し「通常」扱い・残業0とする
+      // （勤務時間は再計算値）。全経路で共通のヘルパーを用いて統一する。
+      const workTimeResult = applyDirectWorkOverride(
+        calculateWorkTimeAndStatus(
+          record.clock_in_time,
+          record.clock_out_time,
+          employee.work_start_time,
+          employee.work_end_time,
+          record.record_date
+        ),
+        record.is_direct_work === true
       );
-
-      // 直行・直帰の記録は遅刻/早退/残業判定を無効化する仕様のため、
-      // 再計算で上書きせずステータスを維持し残業は0にする（勤務時間は再計算値）。
-      const status = record.is_direct_work === true ? record.status : workTimeResult.status;
-      const overtimeMinutes = record.is_direct_work === true ? 0 : workTimeResult.overtimeMinutes;
 
       // ステータス・勤務時間・残業時間を再計算して更新
       const { error: updateError } = await supabase
         .from('time_records')
         .update({
-          status: status,
+          status: workTimeResult.status,
           work_hours: workTimeResult.actualWorkHours,
-          overtime_minutes: overtimeMinutes,
+          overtime_minutes: workTimeResult.overtimeMinutes,
           updated_at: new Date().toISOString()
         })
         .eq('id', record.id);

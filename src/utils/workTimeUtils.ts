@@ -146,6 +146,27 @@ export const calculateWorkTimeAndStatus = (
 };
 
 /**
+ * 直行・直帰の仕様を勤務時間結果に適用する。
+ *
+ * 直行直帰の記録は遅刻・早退・残業の判定を無効化し「通常」扱いとするが、
+ * 労働時間（actualWorkHours）はそのまま計上する。ただし不正データ
+ * （'設定エラー'）は隠さずそのまま表面化させる。
+ *
+ * この関数を打刻・修正・再計算の全経路で使うことで、直行直帰の扱いを統一する。
+ *
+ * @param result calculateWorkTimeAndStatus の結果
+ * @param isDirectWork 直行直帰フラグ
+ */
+export const applyDirectWorkOverride = (
+  result: WorkTimeResult,
+  isDirectWork: boolean
+): WorkTimeResult => {
+  if (!isDirectWork) return result;
+  if (result.status === '設定エラー') return result;
+  return { actualWorkHours: result.actualWorkHours, status: '通常', overtimeMinutes: 0 };
+};
+
+/**
  * 時刻文字列を今日の日付と結合
  * @param timeString "HH:MM:SS" 形式
  * @param baseDate 基準日（省略時は今日）
