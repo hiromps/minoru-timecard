@@ -14,16 +14,18 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
   const [error, setError] = useState('');
 
   // コンポーネント読み込み時に保存されたログイン情報を復元
+  // セキュリティ上、パスワードは保存・復元しない（ユーザー名のみ記憶）
   useEffect(() => {
     const savedUsername = localStorage.getItem('adminUsername');
-    const savedPassword = localStorage.getItem('adminPassword');
     const savedRemember = localStorage.getItem('adminRemember') === 'true';
-    
-    if (savedRemember && savedUsername && savedPassword) {
+
+    if (savedRemember && savedUsername) {
       setUsername(savedUsername);
-      setPassword(savedPassword);
       setRememberLogin(true);
     }
+
+    // 旧仕様で平文保存されたパスワードが残っていれば削除（既存端末のクリーンアップ）
+    localStorage.removeItem('adminPassword');
   }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -35,16 +37,16 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
       const result = await simpleAuth.authenticate(username, password);
 
       if (result.success) {
-        // ログイン情報の記憶機能
+        // ログイン情報の記憶機能（ユーザー名のみ記憶・パスワードは保存しない）
         if (rememberLogin) {
           localStorage.setItem('adminUsername', username);
-          localStorage.setItem('adminPassword', password);
           localStorage.setItem('adminRemember', 'true');
         } else {
           localStorage.removeItem('adminUsername');
-          localStorage.removeItem('adminPassword');
           localStorage.removeItem('adminRemember');
         }
+        // 旧仕様で平文保存されたパスワードは常に削除
+        localStorage.removeItem('adminPassword');
 
         // ローカルストレージにトークン保存（既存システムとの互換性のため）
         if ('token' in result && result.token) {
@@ -104,7 +106,7 @@ const AdminLogin: React.FC<AdminLoginProps> = ({ onLogin }) => {
                 onChange={(e) => setRememberLogin(e.target.checked)}
                 disabled={loading}
               />
-              <span className="checkbox-text">ログイン情報を記憶する</span>
+              <span className="checkbox-text">ユーザー名を記憶する</span>
             </label>
           </div>
           

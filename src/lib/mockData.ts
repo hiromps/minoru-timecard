@@ -1,4 +1,7 @@
-import { Employee, TimeRecord } from './supabase'
+import { Employee, TimeRecord, isDevMode } from './supabase'
+
+// isDevMode は supabase.ts を唯一の出所とし、後方互換のため再エクスポートする
+export { isDevMode }
 
 // 開発環境用のモックデータ
 export const mockEmployees: Employee[] = [
@@ -35,10 +38,3 @@ export const mockEmployees: Employee[] = [
 ]
 
 export const mockTimeRecords: TimeRecord[] = []
-
-// デモモード判定（環境変数に基づく）
-export const isDevMode = !process.env.REACT_APP_SUPABASE_URL || 
-  process.env.REACT_APP_SUPABASE_URL.includes('placeholder') ||
-  process.env.REACT_APP_SUPABASE_URL === 'your-project-url.supabase.co' ||
-  !process.env.REACT_APP_SUPABASE_ANON_KEY ||
-  process.env.REACT_APP_SUPABASE_ANON_KEY === 'your-anon-key-here'
