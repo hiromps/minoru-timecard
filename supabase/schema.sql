@@ -9,12 +9,13 @@
 -- 用途: 新規 Supabase プロジェクトを構築する際の基盤スキーマ。
 --       既存本番は既に適用済みのため、本ファイルを本番へ流す必要はありません。
 --
--- 注意（実 DB に存在する既知の問題。詳細は docs/KNOWN_ISSUES.md）:
---   * audit_trigger_function / admin_create_time_record は、実テーブルに存在
---     しない列（old_data/new_data、notes/created_by_admin）を参照しており壊れて
---     いる。ただしトリガー未設置・フロント未使用のため実害はない（デッドコード）。
---     本ファイルでは「本番の実態」を忠実に再現しつつ、該当箇所にコメントを付す。
---   * updated_at を自動更新するトリガーは実 DB に設置されていない。
+-- 2026-07-06 の整備で以下を本番へ適用済み（本ファイルも反映）:
+--   * 残置バックアップ表 _recalc_backup_20260606 を削除（RLS無効の公開状態を解消）
+--   * 壊れた未使用関数 admin_create_time_record / admin_delete_time_record を削除
+--   * updated_at 自動更新トリガーを employees / time_records / admin_profiles に設置
+--   * audit_trigger_function の列名を old_values / new_values に修正（トリガーは未設置）
+--
+-- 注意:
 --   * (employee_id, record_date) の UNIQUE 制約は無い（1日1レコードはアプリ側で担保）。
 -- =============================================================================
 
@@ -125,11 +126,7 @@ BEGIN
 END;
 $function$;
 
--- 監査トリガー用関数
--- ⚠️ 既知の不具合: 実 audit_logs には old_data/new_data 列が無く（正しくは
---    old_values/new_values）、この関数は壊れている。実 DB ではどのテーブルにも
---    トリガーとして設置されていないため発火せず、実害はない（デッドコード）。
---    新規構築時にトリガーを張る場合は列名を old_values/new_values に修正すること。
+-- 監査トリガー用関数（列名を実テーブルに合わせて修正済み。ただしトリガーは未設置）
 CREATE OR REPLACE FUNCTION public.audit_trigger_function()
 RETURNS trigger
 LANGUAGE plpgsql
@@ -138,13 +135,14 @@ SET search_path TO 'public'
 AS $function$
 BEGIN
     INSERT INTO public.audit_logs (
-        table_name, action, old_data, new_data, user_id, created_at   -- ⚠️ old_data/new_data は実在しない列
+        table_name, record_id, action, old_values, new_values, user_id, created_at
     )
     VALUES (
         TG_TABLE_NAME,
+        CASE WHEN TG_OP = 'DELETE' THEN (OLD.id)::text ELSE (NEW.id)::text END,
         TG_OP,
-        CASE WHEN TG_OP = 'DELETE' OR TG_OP = 'UPDATE' THEN row_to_json(OLD) ELSE NULL END,
-        CASE WHEN TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN row_to_json(NEW) ELSE NULL END,
+        CASE WHEN TG_OP = 'DELETE' OR TG_OP = 'UPDATE' THEN row_to_json(OLD)::jsonb ELSE NULL END,
+        CASE WHEN TG_OP = 'INSERT' OR TG_OP = 'UPDATE' THEN row_to_json(NEW)::jsonb ELSE NULL END,
         auth.uid(),
         NOW()
     );
@@ -267,106 +265,9 @@ BEGIN
 END;
 $function$;
 
--- ⚠️ 以下 admin_create_time_record / admin_delete_time_record は、実テーブルに無い
---    列（notes / created_by_admin）や employees.id(bigint) を UUID として扱う等の
---    不整合があり壊れている。フロントは correct_time_record を使用しており、これらは
---    未使用のデッドコード。忠実性のため実 DB の定義を再現するが、新規構築では
---    修正または削除を推奨（docs/KNOWN_ISSUES.md 参照）。
-CREATE OR REPLACE FUNCTION public.admin_create_time_record(
-    p_employee_id uuid, p_record_date date,
-    p_clock_in_time timestamptz DEFAULT NULL, p_clock_out_time timestamptz DEFAULT NULL,
-    p_notes text DEFAULT NULL
-)
-RETURNS uuid
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-DECLARE
-    v_record_id UUID;
-BEGIN
-    IF NOT public.is_admin_with_write_access() THEN
-        RAISE EXCEPTION 'Permission denied: Admin access required';
-    END IF;
-
-    INSERT INTO public.time_records (
-        employee_id, record_date, clock_in_time, clock_out_time, notes, created_by_admin  -- ⚠️ notes/created_by_admin は実在しない列
-    )
-    VALUES (p_employee_id, p_record_date, p_clock_in_time, p_clock_out_time, p_notes, true)
-    RETURNING id INTO v_record_id;
-
-    RETURN v_record_id;
-END;
-$function$;
-
-CREATE OR REPLACE FUNCTION public.admin_create_time_record(
-    target_employee_id text, target_date date,
-    clock_in_time timestamptz, clock_out_time timestamptz, reason text
-)
-RETURNS uuid
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-DECLARE
-    v_record_id UUID;
-    v_employee_uuid UUID;
-BEGIN
-    IF NOT public.is_admin_with_write_access() THEN
-        RAISE EXCEPTION 'Permission denied: Admin access required';
-    END IF;
-
-    SELECT id INTO v_employee_uuid FROM public.employees WHERE id::TEXT = target_employee_id;
-
-    INSERT INTO public.time_records (
-        employee_id, record_date, clock_in_time, clock_out_time, notes, created_by_admin  -- ⚠️ 同上
-    )
-    VALUES (v_employee_uuid, target_date, clock_in_time, clock_out_time, reason, true)
-    RETURNING id INTO v_record_id;
-
-    RETURN v_record_id;
-END;
-$function$;
-
-CREATE OR REPLACE FUNCTION public.admin_delete_time_record(p_record_id uuid)
-RETURNS boolean
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-BEGIN
-    IF NOT public.is_admin_with_write_access() THEN
-        RAISE EXCEPTION 'Permission denied: Admin access required';
-    END IF;
-
-    DELETE FROM public.time_records WHERE id = p_record_id;
-    RETURN FOUND;
-END;
-$function$;
-
-CREATE OR REPLACE FUNCTION public.admin_delete_time_record(
-    target_employee_id text, target_date date, reason text
-)
-RETURNS boolean
-LANGUAGE plpgsql
-SECURITY DEFINER
-SET search_path TO 'public'
-AS $function$
-DECLARE
-    v_employee_uuid UUID;
-BEGIN
-    IF NOT public.is_admin_with_write_access() THEN
-        RAISE EXCEPTION 'Permission denied: Admin access required';
-    END IF;
-
-    SELECT id INTO v_employee_uuid FROM public.employees WHERE id::TEXT = target_employee_id;
-
-    DELETE FROM public.time_records
-    WHERE employee_id = v_employee_uuid AND record_date = target_date;
-
-    RETURN FOUND;
-END;
-$function$;
+-- 注: 旧 admin_create_time_record / admin_delete_time_record（実テーブルと不整合で
+--     壊れており、かつフロント未使用のデッドコード）は 2026-07-06 に削除済みのため
+--     本スキーマには含めない。打刻修正は correct_time_record を使用する。
 
 -- ---------------------------------------------------------------------------
 -- 3. RLS 有効化
@@ -457,12 +358,16 @@ CREATE POLICY "audit_logs_read" ON public.audit_logs
 -- user_sessions: 実 DB はポリシー未定義（SECURITY DEFINER 関数のみが操作）。
 
 -- ---------------------------------------------------------------------------
--- 5. 参考: updated_at 自動更新トリガー（実 DB では未設置）
+-- 5. updated_at 自動更新トリガー（2026-07-06 に本番へ設置済み）
 -- ---------------------------------------------------------------------------
--- 新規構築で updated_at を自動更新したい場合は以下を有効化する:
--- CREATE TRIGGER trg_employees_updated_at BEFORE UPDATE ON public.employees
---     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
--- CREATE TRIGGER trg_time_records_updated_at BEFORE UPDATE ON public.time_records
---     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
--- CREATE TRIGGER trg_admin_profiles_updated_at BEFORE UPDATE ON public.admin_profiles
---     FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+DROP TRIGGER IF EXISTS trg_employees_updated_at ON public.employees;
+CREATE TRIGGER trg_employees_updated_at BEFORE UPDATE ON public.employees
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS trg_time_records_updated_at ON public.time_records;
+CREATE TRIGGER trg_time_records_updated_at BEFORE UPDATE ON public.time_records
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
+
+DROP TRIGGER IF EXISTS trg_admin_profiles_updated_at ON public.admin_profiles;
+CREATE TRIGGER trg_admin_profiles_updated_at BEFORE UPDATE ON public.admin_profiles
+    FOR EACH ROW EXECUTE FUNCTION public.update_updated_at_column();
