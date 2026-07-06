@@ -127,9 +127,14 @@
 - 監査ログを集計・検索する際、どちらのカラムに値が入っているかを意識しないと、変更前後の値が取得できないことがあります。
 - 一方のカラムしか存在しない場合、もう一方の経路の書き込みが失敗している可能性があります。
 
-**対応方針（記録のみ・要実DB突合）**
-- まず本番Supabaseで `audit_logs` の実カラム構成を確認し（[DATA_MODEL.md](./DATA_MODEL.md) の突合手順）、いずれかのカラム系統に統一することを推奨します。
-- 統一するまでは、監査ログ確認時に両系統のカラムを参照してください（[OPERATIONS.md](./OPERATIONS.md) 参照）。
+**実測で判明した事実（2026-07-06 に本番DBをMCPで確認）**
+- 実 `audit_logs` テーブルの列は **`old_values` / `new_values`（jsonb）** です（`old_data` / `new_data` は存在しません）。
+- フロントの記録処理は `new_values` に書き込むため**正しく動作**しています（実データ4件もこの経路由来）。
+- 一方、DB関数 `audit_trigger_function` は存在しない `old_data` / `new_data` にINSERTしようとしており**壊れています**。ただし**どのテーブルにもトリガーとして設置されていない**（トリガー0件）ため発火せず、実害はありません（デッドコード）。
+
+**対応方針（記録のみ）**
+- 現状のまま運用に支障はありません。監査ログは `old_values` / `new_values` を参照してください。
+- 将来 DB トリガーで自動監査を有効化する場合は、`audit_trigger_function` の列名を `old_values` / `new_values` に修正してからトリガーを設置してください（`supabase/schema.sql` の該当箇所にも注記済み）。
 
 ---
 
@@ -180,6 +185,36 @@
 **対応方針（記録のみ・運用回避）**
 - 現状は業務ロジックの単体テストで品質を担保します。
 - 将来コンポーネント／E2Eテストが必要な場合は、ビルドツールを Vite + Vitest へ移行するか、Playwright 等の E2E で補うことを検討してください（react-scripts 5 の Jest 設定は CRA がロックしており、`moduleNameMapper` 等の上書きが困難なため）。
+
+---
+
+## 10. 本番DB実測（2026-07-06）で判明した追加項目
+
+2026-07-06 に本番 Supabase（`pddriyhmkvsklqmtxsro`）を MCP で読み取り、以下を確認しました。
+`supabase/schema.sql` は実測値で確定済みです。
+
+### 10-1. 壊れたデッドコード関数（実害なし）
+- `admin_create_time_record`（uuid版・text版の2オーバーロード）は、`time_records` に存在しない列 `notes` / `created_by_admin` にINSERTしようとしており、**呼び出せば必ず失敗**します。フロントは正しい `correct_time_record` を使用しており、これらは**未使用**です。
+- **対応方針（記録のみ）**: 新規構築時は削除または列名修正を推奨。現行フロントからは呼ばれないため実害はありません。
+
+### 10-2. `updated_at` の自動更新トリガーが未設置
+- `update_updated_at_column()` 関数は存在しますが、**どのテーブルにもトリガーが張られていません**。そのため `updated_at` はレコード更新時に自動更新されません（アプリ側で明示的に設定しない限り作成時刻のまま）。
+- **対応方針（記録のみ）**: 監査・追跡精度を上げたい場合は `supabase/schema.sql` 末尾のトリガー例を有効化してください。
+
+### 10-3. 🔴 残置バックアップ表 `_recalc_backup_20260606` が RLS 無効で公開状態
+- 2026-06-06 のステータス再計算時に作られたバックアップ表（1003行、`id`/`work_hours`/`status`/`overtime_minutes`/`backed_up_at`）が **RLS 無効のまま残存**しており、匿名（anon）ロールから読み取り可能な状態です（Supabase アドバイザ: ERROR `rls_disabled_in_public`）。
+- **影響**: 直接の個人情報（氏名等）は含みませんが、勤務時間・ステータスの履歴が公開 API 経由で読める状態です。
+- **対応方針（要判断）**: 不要なら**削除（DROP TABLE）**、保持するなら **RLS 有効化＋管理者限定ポリシー付与**を推奨。破壊的操作のため実施前に承認を得ること。
+
+### 10-4. Supabase Auth / プラットフォームの推奨設定（アドバイザ WARN）
+- 漏洩パスワード保護（HaveIBeenPwned 連携）が**無効**。
+- MFA（多要素認証）の選択肢が**不足**。
+- Postgres（`supabase-postgres-17.4.1.074`）に**セキュリティパッチ待ち**あり。
+- **対応方針（推奨）**: Supabase ダッシュボードで漏洩パスワード保護・MFA を有効化、計画的に Postgres をアップグレード。詳細は [SECURITY.md](./SECURITY.md)。
+
+### 10-5. SECURITY DEFINER 関数が anon から実行可能（アドバイザ WARN）
+- `correct_time_record` などの RPC は anon/authenticated から実行可能です（キオスク設計上、打刻・修正に必要）。`admin_*` 系は内部で `is_admin_with_write_access()` により権限チェックしているため、権限のない呼び出しは拒否されます。
+- **対応方針（記録のみ）**: 現設計の想定挙動。より厳格にするなら不要な関数の `EXECUTE` 権限を anon から REVOKE することを検討。
 
 ---
 

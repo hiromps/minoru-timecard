@@ -7,24 +7,28 @@
 - **タイムゾーン規約**:
   - `clock_in_time` / `clock_out_time` は **timestamptz（UTC で保存）**
   - `record_date` は **JST の暦日（date）**
-  - `work_start_time` / `work_end_time` は **JST の "HH:MM"**
+  - `work_start_time` / `work_end_time` は **`time` 型（JST の時刻。既定 09:00 / 17:00）**
   - ステータス・残業判定はフロントの `src/utils/workTimeUtils.ts` が JST 基準で算出
 
 ---
 
-## ⚠️ 重要 — 本書は推定を含む復元である
+## ✅ 本書は実測で検証済み（2026-07-06）
 
-**ベース初期スキーマの原本（`supabase-schema.sql` 相当）がリポジトリに存在しません。**
-初期テーブル群は Supabase コンソール（SQL Editor）で手動適用されたため、本書は以下から
-**推定を含めて**復元したものです。
+**2026-07-06 に本番 Supabase（`pddriyhmkvsklqmtxsro`）を MCP 経由で読み取り、実測値で確定しました。**
+検証済みの正規スキーマは `supabase/schema.sql` にあります（テーブル・制約・RLS・関数の実定義を反映）。
 
-- 差分 SQL（`supabase/migrations/` に集約済み）: `0001_fix_employee_access_for_public.sql` / `0002_add_overtime_minutes.sql` / `0003_fix_search_path_security.sql` / `0004_fix_rls_performance.sql`。復元した正規スキーマは `supabase/schema.sql`
-- フロントエンドの実クエリ: `src/lib/database.ts` / `adminSupabase.ts` / `supabase.ts` / `auth.ts` / `security.ts`
-- 診断 SQL: `claudedocs/check_rls.sql` / `claudedocs/diagnose_status.sql`
+本書の一部に「推定」と記載が残っている場合は、以下の**実測で判明した確定事項**が優先されます。
 
-列の正確な型・DEFAULT・NOT NULL・FK・UNIQUE の一部、およびトリガー・一部 RPC の定義は**推定**です。
-本書内で **「推定」** と明記した項目は、必ず[本番 Supabase 実 DB との突合検証手順](#本番-supabase-実-db-との突合検証手順)で確認してください。
-ベストエフォート復元 SQL は `supabase/schema.sql` を参照。
+- **`employees`**: `work_start_time` / `work_end_time` は **`time` 型**（"HH:MM" テキストではない）。既定は `09:00:00` / `17:00:00`。加えて **`is_active`(bool, 既定true) / `created_by`(uuid) / `updated_by`(uuid)** 列が実在。`id` は `bigint`（identity）、`employee_id` は `text` UNIQUE。
+- **`time_records`**: `employee_id` は **`text`**、FK は `employees(employee_id)` へ **ON DELETE CASCADE**。制約は `check_clock_times`（退勤>出勤）・`check_work_hours`（0〜24）・status の7値CHECK。**`(employee_id, record_date)` の UNIQUE 制約は存在しない**（1日1レコードはアプリ側でのみ担保）。
+- **`admin_profiles`**: `role` 既定は `'viewer'`、CHECK は `super_admin/admin/viewer`（`check_admin_role`）。`last_login` 列が実在。
+- **`audit_logs`**: 列は **`old_values` / `new_values`（jsonb）**（`old_data` / `new_data` ではない）。他に `record_id`(text) / `action`(CHECK) / `user_id` / `ip_address` / `user_agent` / `reason` / `created_at`。
+- **`user_sessions`**: `last_activity` 列が実在。RLS 有効だが**ポリシー未定義**（API 経由アクセス不可・SECURITY DEFINER 関数のみが操作）。
+- **トリガー**: 実 DB には**トリガーが1つも設置されていない**（`updated_at` 自動更新も無い）。
+- **壊れたデッドコード関数**: `audit_trigger_function`（`old_data/new_data` 参照）、`admin_create_time_record`（`notes/created_by_admin` 参照）は実テーブルと不整合で壊れているが、未使用のため実害なし。詳細は [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) §6・§10。
+- **残置バックアップ表 `_recalc_backup_20260606`**（RLS無効・要対応）が存在。[KNOWN_ISSUES.md](./KNOWN_ISSUES.md) §10-3。
+
+> 参考: 差分 SQL は `supabase/migrations/`（`0001`〜`0004`）、フロントの実クエリは `src/lib/*.ts`、診断 SQL は `claudedocs/*.sql`。以降の各節に一部「推定」表記が残っていますが、上記の実測確定事項および `supabase/schema.sql` を正とします。
 
 ---
 

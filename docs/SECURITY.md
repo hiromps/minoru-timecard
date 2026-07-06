@@ -109,7 +109,7 @@ Supabase Auth ユーザーと 1:1 で対応する管理者メタデータ。
 ### 4.5 適用順序（SQL スクリプト）
 本整備で、リポジトリ直下に散在していた SQL を `supabase/` 配下へ集約した。現在の正典は以下である。
 
-- `supabase/schema.sql` — 全テーブル・制約・索引・RLS・主要関数/トリガーを**ベストエフォートで復元した正規スキーマ**（冪等）。ただし基盤 DDL の原本が存在しないため**推定を含む**。必ず本番 Supabase の実 DB と突合すること（[DATA_MODEL.md](./DATA_MODEL.md) の突合手順）。
+- `supabase/schema.sql` — 全テーブル・制約・RLS・関数を**実 DB から読み取り確定した検証済みスキーマ**（2026-07-06 に MCP で実測。[DATA_MODEL.md](./DATA_MODEL.md) 参照）。
 - `supabase/migrations/` — 実際に適用されてきた差分パッチを順序付きで保管。
   1. `0001_fix_employee_access_for_public.sql` — キオスク公開 RLS への切替。
   2. `0002_add_overtime_minutes.sql` — 残業分カラム追加。
@@ -117,7 +117,7 @@ Supabase Auth ユーザーと 1:1 で対応する管理者メタデータ。
   4. `0004_fix_rls_performance.sql` — `(select auth.uid())` 化・重複ポリシー/インデックス整理。
   - 適用順・元ファイル対応・注意点は `supabase/migrations/README.md` を参照。
 
-> **残存する技術的負債**: 基盤テーブルの初期 DDL 原本（歴史的に `supabase-schema.sql` / `supabase-enhanced-security.sql` と呼ばれた）は Git に無く、Supabase 上にのみ存在する。`supabase/schema.sql` はそれを推定復元したものであり、実 DB との一致は未検証である。DR/再構築の信頼性のため、本番 DB から `pg_dump --schema-only` を取得して `supabase/schema.sql` を実測値で確定することを推奨する。詳細は [DEPLOYMENT.md](./DEPLOYMENT.md) を参照。
+> **補足**: 基盤テーブルの初期 DDL 原本は元々 Git に無く Supabase 上にのみ存在していたが、2026-07-06 に MCP 経由で実 DB を読み取り、`supabase/schema.sql` を実測値で確定済み。以後スキーマを変更した際は、同様に実 DB と `supabase/schema.sql` の同期を保つこと。
 
 ---
 
