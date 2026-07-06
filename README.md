@@ -1,131 +1,107 @@
 # ミノルタイムカードシステム
 
-個別出勤時間設定に対応したタイムカード管理システムです。
+ミノル化学工業株式会社の勤怠打刻システムです。個別の所定勤務時間設定に対応し、ブラウザから直接 Supabase に接続する SPA として動作します。
+
+> UI 表示名は「ミノルタイムカードシステム」です。社内向けの内部利用を前提としています。
+
+## 概要
+
+- 従業員はブラウザで出勤・退勤を打刻します。
+- 打刻データは Supabase (PostgreSQL) に保存され、ステータス（遅刻・早退・残業など）は打刻時に自動判定されます。
+- 管理者は `/admin` 画面から打刻記録の閲覧・修正、月次集計、社員管理、CSV 出力を行えます。
+- 独立した API サーバーは持ちません。フロントエンドの `@supabase/supabase-js` が Supabase と直接通信します。
 
 ## 主な機能
 
-- **打刻機能**: 出勤・退勤の打刻
-- **ステータス自動判定**: 遅刻、早退、残業、通常の自動判定
-- **社員管理**: 社員の追加、編集、削除、個別出勤時間設定
-- **打刻記録管理**: 打刻履歴の表示とフィルタリング
-- **Excel出力**: CSV形式でのデータエクスポート
+- **打刻**: 出勤・退勤の打刻（`/` 画面）
+- **直行直帰モード**: 直行直帰の打刻。遅刻・早退・残業の判定を抑止して「通常」扱いにしつつ、労働時間は計上する（出勤時に永続化し、退勤時に再確認）
+- **時刻指定打刻・修正**: 管理者が打刻時刻を指定・修正できる UI（打刻記録タブ）
+- **ステータス自動判定**: 通常／遅刻／早退／残業／遅刻・早退／遅刻・残業／設定エラー
+- **月次集計**: 従業員ごとの月次勤務時間の集計
+- **CSV 出力**: 集計・記録の CSV エクスポート（`xlsx` 利用）
+- **管理者機能**: 認証（Supabase Auth ／固定アカウント）、RBAC、監査ログ、社員 CRUD
 
 ## 技術スタック
 
-### フロントエンド
-- React 18
-- TypeScript
-- CSS3 (レスポンシブデザイン対応)
+- **フロントエンド**: React 18 + TypeScript (Create React App)
+- **データ層 / 認証**: Supabase (PostgreSQL + Auth + RLS)、`@supabase/supabase-js` ^2.56
+- **ルーティング**: react-router-dom 7
+- **ホスティング**: Vercel（静的 SPA 配信）。フォールバックとして Netlify (`public/_redirects`)
+- **ランタイム**: Node.js 20.x / npm 10.x
 
-### バックエンド
-- Node.js
-- Express.js
-- SQLite3
-- TypeScript
+> 旧構成（Express + SQLite のバックエンド）は廃止済みです。詳細は下記「レガシー」を参照してください。
 
-## セットアップ
+## クイックスタート
 
 ### 1. 依存関係のインストール
 
 ```bash
-# フロントエンド
-npm install
-
-# バックエンド
-cd backend
 npm install
 ```
 
-### 2. 開発サーバーの起動
+### 2. 環境変数の設定
+
+`.env.example` を `.env` にコピーし、Supabase プロジェクトの値を設定します。
 
 ```bash
-# バックエンドサーバー起動 (ポート3001)
-cd backend
-npm run dev
+cp .env.example .env
+```
 
-# フロントエンドサーバー起動 (ポート3000)
+最低限、以下の 2 つを設定します（未設定・プレースホルダのままだとデモモードになります）。
+
+```
+REACT_APP_SUPABASE_URL=https://<your-project>.supabase.co
+REACT_APP_SUPABASE_ANON_KEY=<your-anon-key>
+```
+
+環境変数の一覧と挙動は [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) を参照してください。
+
+### 3. 開発サーバーの起動
+
+```bash
 npm start
 ```
 
-### 3. アクセス
+- 打刻画面: http://localhost:3000
+- 管理画面: http://localhost:3000/admin
 
-- フロントエンド: http://localhost:3000
-- バックエンドAPI: http://localhost:3001
+### デモモード
 
-## 🔒 セキュリティ機能（強化版）
+`REACT_APP_SUPABASE_URL` / `REACT_APP_SUPABASE_ANON_KEY` が未設定、またはプレースホルダ値（`your-project-url.supabase.co` / `your-anon-key-here`）の場合、アプリは **デモモード** で起動します。この場合 Supabase には接続せず、モッククライアントと組み込みのデモデータ（`src/lib/demoDatabase.ts` / `src/lib/mockData.ts`）で動作します。Supabase の準備なしに画面や打刻の流れを確認できます。
 
-### 権限ベースアクセス制御（RBAC）
-- **Super Admin**: 全ての操作（削除も含む）
-- **Admin**: データ管理（削除制限あり）
-- **Viewer**: 閲覧のみ
+## ビルドとデプロイ
 
-### アカウント保護
-- **失敗ログイン保護**: 5回失敗で1時間自動ロック
-- **セッション管理**: 8時間で自動期限切れ
-- **監査ログ**: 全操作の自動記録
+### ビルド
 
-### データ整合性
-- 1日1人1打刻制限
-- 時間妥当性チェック
-- 勤務時間範囲制限
+```bash
+npm run build
+```
 
-### IP制限（オプション）
-- `backend/config/allowed-ips.json`で許可IPを設定
+`build/` ディレクトリに静的アセットが出力されます。
 
-## 📋 セキュリティ導入ガイド
+### デプロイ（Vercel）
 
-詳細な導入手順は以下のドキュメントを参照：
-- `ENHANCED_SECURITY_GUIDE.md` - セキュリティ強化ガイド
-- `SECURITY_DEPLOYMENT_CHECKLIST.md` - 導入チェックリスト
-- `supabase-enhanced-security.sql` - セキュリティ強化SQLスキーマ
+`vercel.json` の設定に従います。
 
-## データベース
+- `buildCommand`: `npm run build`
+- `outputDirectory`: `build`
+- `installCommand`: `npm install --force`
+- `rewrites`: 全リクエストを `/index.html` に書き換え（SPA ルーティング）
 
-SQLiteデータベースファイル (`timecard.db`) は `backend` ディレクトリに自動作成されます。
-Supabase使用時は`supabase-enhanced-security.sql`でセキュリティ強化されたスキーマを適用してください。
+Vercel のプロジェクト環境変数に `REACT_APP_SUPABASE_URL` / `REACT_APP_SUPABASE_ANON_KEY` を設定してください。Netlify を使う場合は `public/_redirects`（`/* /index.html 200`）が同等の役割を果たします。
 
-### テーブル構造
+詳細な手順は [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) を参照してください。
 
-#### employees テーブル
-- id: 主キー
-- employee_id: 社員ID
-- name: 氏名
-- department: 部署
-- work_start_time: 出勤時間
-- work_end_time: 退勤時間
-- created_at: 作成日時
-- updated_at: 更新日時
+## ドキュメント索引
 
-#### time_records テーブル
-- id: 主キー
-- employee_id: 社員ID
-- record_date: 記録日
-- clock_in_time: 出勤時刻
-- clock_out_time: 退勤時刻
-- status: ステータス（通常、遅刻、早退、残業）
-- created_at: 作成日時
-- updated_at: 更新日時
-
-## ステータス判定ロジック
-
-- **通常**: 午前9時以内の出勤、または個別設定時間内の出勤
-- **遅刻**: 個別設定出勤時間を過ぎた出勤
-- **早退**: 17時前の退勤
-- **残業**: 8時間を超える勤務
-
-## API エンドポイント
-
-### 社員管理
-- GET `/api/employees` - 全社員取得
-- POST `/api/employees` - 社員追加
-- PUT `/api/employees/:id` - 社員更新
-- DELETE `/api/employees/:id` - 社員削除
-
-### 打刻記録
-- POST `/api/time-records/clock-in` - 出勤打刻
-- POST `/api/time-records/clock-out` - 退勤打刻
-- GET `/api/time-records` - 打刻記録取得
-- GET `/api/time-records/export` - CSV出力用データ取得
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — システム構成・業務ロジックの所在
+- [docs/ENVIRONMENT.md](docs/ENVIRONMENT.md) — 環境変数リファレンス
+- [docs/DATA_MODEL.md](docs/DATA_MODEL.md) — データモデル・テーブルスキーマ
+- [docs/SECURITY.md](docs/SECURITY.md) — セキュリティ設計・RLS・権限
+- [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md) — デプロイ手順
+- [docs/OPERATIONS.md](docs/OPERATIONS.md) — 運用手順
+- [docs/ADMIN_GUIDE.md](docs/ADMIN_GUIDE.md) — 管理者マニュアル
+- [docs/USER_GUIDE.md](docs/USER_GUIDE.md) — 利用者マニュアル
 
 ## ライセンス
 

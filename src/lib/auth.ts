@@ -154,13 +154,17 @@ export const authService = {
 export const simpleAuth = {
   // ユーザー名・パスワード認証
   async authenticate(username: string, password: string) {
-    // デモモードでは簡易認証
+    // デモモードでは簡易認証（認証情報は環境変数化・個人名を排除）
     if (isDevMode) {
-      if (username === 'minoruaki' && password === 'akihiro0324') {
+      // デモ用の管理者ログイン情報（デモ専用・本番では使用不可）
+      const DEMO_USER = process.env.REACT_APP_DEMO_ADMIN_USER || 'admin'
+      const DEMO_PASS = process.env.REACT_APP_DEMO_ADMIN_PASS || 'minoru-demo'
+
+      if (username === DEMO_USER && password === DEMO_PASS) {
         console.log('🔧 デモモード: 管理者認証成功')
         return {
           success: true,
-          user: { id: 'demo-admin', email: 'minoruaki@demo.local', name: 'minoruaki' },
+          user: { id: 'demo-admin', email: 'admin@demo.local', name: '管理者(デモ)' },
           token: 'demo-token'
         }
       } else {
@@ -171,8 +175,12 @@ export const simpleAuth = {
       }
     }
 
-    // ユーザー名による認証チェック
-    if (username !== 'minoruaki') {
+    // ユーザー名による認証チェック（個人名依存を排除）
+    // 本番認証は固定メール admin@timecard.local に対するパスワード認証で行うため、
+    // ユーザー名は表示用に過ぎない。後方互換で特定ユーザー名に限定したい場合のみ
+    // 環境変数 REACT_APP_ADMIN_USERNAME を設定する（未設定なら任意のユーザー名を受理）。
+    const allowedUsername = process.env.REACT_APP_ADMIN_USERNAME
+    if (allowedUsername && username !== allowedUsername) {
       return {
         success: false,
         error: 'ユーザー名またはパスワードが正しくありません'

@@ -75,16 +75,16 @@ if (isDevMode) {
   try {
     const { createClient } = require('@supabase/supabase-js')
     
-    // 環境変数から取得（フォールバック付き）
-    let supabaseUrl = process.env.REACT_APP_SUPABASE_URL
-    let supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY
-    
-    // 環境変数が正しく読み込まれていない場合のフォールバック
+    // 環境変数から取得（ハードコードのフォールバックは持たない）
+    const supabaseUrl = process.env.REACT_APP_SUPABASE_URL
+    const supabaseAnonKey = process.env.REACT_APP_SUPABASE_ANON_KEY
+
+    // URL未設定/無効時は明確なエラーで停止（anonキーと同様の扱い）
     if (!supabaseUrl || supabaseUrl === 'your-project-url.supabase.co') {
-      supabaseUrl = 'https://pddriyhmkvsklqmtxsro.supabase.co'
-      console.log('⚠️ 環境変数のURLが無効なため、フォールバック値を使用')
+      console.error('❌ 環境変数REACT_APP_SUPABASE_URLが設定されていません')
+      throw new Error('Supabase URLが設定されていません。.envファイルを確認してください。')
     }
-    
+
     if (!supabaseAnonKey || supabaseAnonKey === 'your-anon-key-here') {
       console.error('❌ 環境変数REACT_APP_SUPABASE_ANON_KEYが設定されていません')
       throw new Error('Supabase APIキーが設定されていません。.envファイルを確認してください。')
