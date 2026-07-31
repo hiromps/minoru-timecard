@@ -5,7 +5,7 @@ import MonthlySummary from './MonthlySummary';
 import './AdminDashboard.css';
 import { getAllTimeRecords, getEmployees } from '../lib/adminSupabase';
 import { formatWorkHoursForCSV, formatMinutesForCSV } from '../utils/timeUtils';
-import { getJSTDate } from '../utils/dateUtils';
+import { getJSTDate, getJSTDateTimeLocal } from '../utils/dateUtils';
 import {
   getClosingPeriod,
   getDefaultClosingMonth,
@@ -20,6 +20,12 @@ interface AdminDashboardProps {
   admin: any;
   onLogout: () => void;
 }
+
+// CSVフィールドのエスケープ（全フィールドを " で囲み、内部の " は "" に変換）
+const escapeCsvField = (value: string | number | null | undefined): string => {
+  const str = value === null || value === undefined ? '' : String(value);
+  return `"${str.replace(/"/g, '""')}"`;
+};
 
 const downloadCSV = (csv: string, filename: string) => {
   const bom = '﻿'; // UTF-8 BOM（Excelで文字化けしないように）
@@ -113,9 +119,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
 
       const formatTime = (timeString: string | null) => {
         if (!timeString) return '';
-        // JST基準（ブラウザのタイムゾーンに依存しない）
-        const jst = new Date(new Date(timeString).getTime() + 9 * 60 * 60 * 1000);
-        return `${String(jst.getUTCHours()).padStart(2, '0')}:${String(jst.getUTCMinutes()).padStart(2, '0')}`;
+        // JST基準で "HH:MM" を表示（ブラウザのタイムゾーンに依存しない）。
+        // getJSTDateTimeLocal は 'YYYY-MM-DDTHH:MM' を返すので時刻部分を取り出す。
+        const jstLocal = getJSTDateTimeLocal(timeString);
+        return jstLocal ? jstLocal.slice(11) : '';
       };
 
       const csvHeader = '日付,社員ID,社員名,出勤時刻,退勤時刻,勤務時間,残業時間,ステータス,修正理由\n';
@@ -130,8 +137,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
             formatWorkHoursForCSV(record.work_hours || 0),
             formatMinutesForCSV(record.overtime_minutes || 0),
             record.status,
-            `"${record.correction_reason || ''}"`,
-          ].join(',')
+            record.correction_reason || '',
+          ]
+            .map(escapeCsvField)
+            .join(',')
         )
         .join('\n');
 

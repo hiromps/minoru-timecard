@@ -1,17 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import './TimeRecordManagement.css';
 import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, updateTimeRecord, getEmployees, TimeRecordWithEmployee, deleteTimeRecord, recalculateAllStatus } from '../lib/adminSupabase';
+import { Employee } from '../lib/supabase';
 import { formatWorkHours } from '../utils/timeUtils';
 import { minutesToHoursDisplay } from '../utils/overtimeCalculator';
 import { getJSTDateTimeLocal } from '../utils/dateUtils';
 
 // TimeRecordWithEmployeeを使用するため、ローカル定義は削除
-
-interface Employee {
-  id: number;
-  employee_id: string;
-  name: string;
-}
 
 interface CorrectionModalProps {
   record: TimeRecordWithEmployee | null;
@@ -250,40 +245,41 @@ const TimeRecordManagement: React.FC = () => {
     showManualOnly: false
   });
 
-  // データを取得する関数
-  const fetchTimeRecords = async () => {
-    console.log('🎯 fetchTimeRecords called - starting to fetch data...');
+  // データを取得する関数。isStale はアンマウント後のsetStateを防ぐためのフラグ取得関数
+  const fetchTimeRecords = async (isStale?: () => boolean) => {
     setLoading(true);
     try {
-      console.log('📞 Calling getAllTimeRecords...');
       const records = await getAllTimeRecords();
-      console.log('✅ getAllTimeRecords completed. Records received:', records?.length || 0);
-      console.log('📋 Records data:', records);
+      if (isStale?.()) return;
       setTimeRecords(records);
-      console.log('✅ State updated with records');
     } catch (error) {
       console.error('❌ Error fetching time records:', error);
-      alert('打刻記録の取得に失敗しました: ' + (error as Error).message);
+      if (!isStale?.()) {
+        alert('打刻記録の取得に失敗しました: ' + (error as Error).message);
+      }
     } finally {
-      setLoading(false);
-      console.log('🏁 fetchTimeRecords completed');
+      if (!isStale?.()) setLoading(false);
     }
   };
 
   // 社員データを取得する関数
-  const fetchEmployees = async () => {
+  const fetchEmployees = async (isStale?: () => boolean) => {
     try {
       const employeesData = await getEmployees();
-      setEmployees(employeesData);
+      if (!isStale?.()) setEmployees(employeesData);
     } catch (error) {
       console.error('Error fetching employees:', error);
     }
   };
 
   useEffect(() => {
-    console.log('🚀 TimeRecordManagement component mounted - starting initial data fetch');
-    fetchTimeRecords();
-    fetchEmployees();
+    // アンマウント後のsetStateを防ぐためのフラグ
+    let ignore = false;
+    fetchTimeRecords(() => ignore);
+    fetchEmployees(() => ignore);
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   // フィルタリングされた記録
@@ -320,7 +316,7 @@ const TimeRecordManagement: React.FC = () => {
 
       alert('打刻記録を修正しました');
       setCorrectionModal({ isOpen: false, record: null });
-      fetchTimeRecords(); // データを再取得
+      await fetchTimeRecords(); // データを再取得
     } catch (error: any) {
       console.error('Error correcting record:', error);
       alert(`修正に失敗しました: ${error.message}`);
@@ -339,7 +335,7 @@ const TimeRecordManagement: React.FC = () => {
     try {
       await deleteTimeRecord(employee_id, record_date);
       alert('打刻記録を削除しました');
-      fetchTimeRecords(); // データを再取得
+      await fetchTimeRecords(); // データを再取得
     } catch (error: any) {
       console.error('Error deleting record:', error);
       alert(`削除に失敗しました: ${error.message}`);
@@ -358,7 +354,7 @@ const TimeRecordManagement: React.FC = () => {
     try {
       await recalculateAllStatus();
       alert('ステータスの再計算が完了しました');
-      fetchTimeRecords(); // データを再取得
+      await fetchTimeRecords(); // データを再取得
     } catch (error: any) {
       console.error('Error recalculating status:', error);
       alert(`ステータス再計算に失敗しました: ${error.message}`);
@@ -376,12 +372,6 @@ const TimeRecordManagement: React.FC = () => {
     return jstLocal ? jstLocal.slice(11) : '--:--';
   };
 
-  console.log('🔄 TimeRecordManagement render - timeRecords length:', timeRecords?.length || 0);
-  console.log('🔄 TimeRecordManagement render - loading:', loading);
-  console.log('🔄 TimeRecordManagement render - filters:', filters);
-  console.log('🔄 TimeRecordManagement render - filteredRecords length:', filteredRecords?.length || 0);
-  console.log('🔄 Sample record for comparison:', timeRecords[0]);
-
   return (
     <div className="time-record-management">
       <div className="management-header">
@@ -390,7 +380,7 @@ const TimeRecordManagement: React.FC = () => {
           <button onClick={handleRecalculateStatus} disabled={loading} className="recalculate-btn">
             {loading ? '処理中...' : 'ステータス再計算'}
           </button>
-          <button onClick={fetchTimeRecords} disabled={loading} className="refresh-btn">
+          <button onClick={() => fetchTimeRecords()} disabled={loading} className="refresh-btn">
             {loading ? '読込中...' : '更新'}
           </button>
         </div>

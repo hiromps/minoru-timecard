@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import './MonthlySummary.css';
 import { getMonthlySummary, MonthlySummaryRow } from '../lib/adminSupabase';
 import { formatWorkHours } from '../utils/timeUtils';
@@ -11,22 +11,28 @@ const MonthlySummary: React.FC = () => {
   const [rows, setRows] = useState<MonthlySummaryRow[]>([]);
   const [loading, setLoading] = useState(false);
 
-  const fetchSummary = useCallback(async () => {
-    setLoading(true);
-    try {
-      const data = await getMonthlySummary(year, month);
-      setRows(data);
-    } catch (error) {
-      console.error('月次集計取得エラー:', error);
-      alert(`月次集計の取得に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
-    } finally {
-      setLoading(false);
-    }
-  }, [year, month]);
-
   useEffect(() => {
+    // 年月切替時の後着応答による誤表示と、アンマウント後のsetStateを防ぐフラグ
+    let ignore = false;
+    const fetchSummary = async () => {
+      setLoading(true);
+      try {
+        const data = await getMonthlySummary(year, month);
+        if (!ignore) setRows(data);
+      } catch (error) {
+        console.error('月次集計取得エラー:', error);
+        if (!ignore) {
+          alert(`月次集計の取得に失敗しました: ${error instanceof Error ? error.message : '不明なエラー'}`);
+        }
+      } finally {
+        if (!ignore) setLoading(false);
+      }
+    };
     fetchSummary();
-  }, [fetchSummary]);
+    return () => {
+      ignore = true;
+    };
+  }, [year, month]);
 
   // 年の選択肢（前後2年）
   const yearOptions: number[] = [];

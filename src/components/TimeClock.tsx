@@ -3,7 +3,30 @@ import './TimeClock.css';
 import { Employee, TimeRecord } from '../lib/supabase';
 import { employeeService, timeRecordService } from '../lib/database';
 import { formatWorkHours } from '../utils/timeUtils';
-import { localDateTimeToISO, getJSTDate } from '../utils/dateUtils';
+import { localDateTimeToISO, getJSTDate, getJSTTimeString, getJSTYearMonth } from '../utils/dateUtils';
+
+// ステータス→表示用CSSクラス変換（本日の状況・勤務記録の両方で使用）
+const statusToClass = (status: string | null | undefined): string => {
+  if (status === '通常') return 'normal';
+  const s = status ?? '';
+  if (s.includes('遅刻')) return 'late';
+  if (s.includes('早退')) return 'early';
+  if (s.includes('残業')) return 'overtime';
+  return 'normal';
+};
+
+// ステータス→絵文字付きラベル変換（本日の状況・勤務記録の両方で使用）
+const statusToLabel = (status: string | null | undefined): string => {
+  switch (status) {
+    case '通常': return '✅ 通常';
+    case '遅刻': return '⚠️ 遅刻';
+    case '早退': return '🏃 早退';
+    case '残業': return '💪 残業';
+    case '遅刻・早退': return '⚠️🏃 遅刻・早退';
+    case '遅刻・残業': return '⚠️💪 遅刻・残業';
+    default: return status ?? '';
+  }
+};
 
 const TimeClock: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -16,35 +39,61 @@ const TimeClock: React.FC = () => {
   const [isDirectWork, setIsDirectWork] = useState<boolean>(false);
   const [useSpecifiedTime, setUseSpecifiedTime] = useState<boolean>(false);
   const [showCalendar, setShowCalendar] = useState<boolean>(false);
-  const [currentDate] = useState<Date>(new Date());
+  // 年月はJST基準で取得（ローカルゲッターは月境界でズレるため使わない）
+  const [currentYearMonth] = useState<{ year: number; month: number }>(() => getJSTYearMonth());
   const [todayRecord, setTodayRecord] = useState<TimeRecord | null>(null);
+  const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
+  const [recordsError, setRecordsError] = useState<boolean>(false);
+  const [todayRecordError, setTodayRecordError] = useState<boolean>(false);
 
   const fetchEmployeeRecords = useCallback(async (employeeId: string) => {
     try {
-      const year = currentDate.getFullYear();
-      const month = currentDate.getMonth() + 1;
+      const { year, month } = currentYearMonth;
       const data = await timeRecordService.getEmployeeRecords(employeeId, year, month);
-      
+
       setEmployeeRecords(data);
+      setRecordsError(false);
     } catch (error) {
       console.error('社員の打刻記録取得に失敗しました:', error);
+      setRecordsError(true);
     }
-  }, [currentDate]);
+  }, [currentYearMonth]);
 
   const fetchTodayRecord = useCallback(async (employeeId: string) => {
     try {
       const data = await timeRecordService.getTodayRecord(employeeId);
       setTodayRecord(data);
+      setTodayRecordError(false);
     } catch (error) {
       console.error('本日の記録取得に失敗しました:', error);
+      setTodayRecordError(true);
     }
   }, []);
 
   useEffect(() => {
+    // アンマウント後のsetStateを防ぐためのフラグ
+    let ignore = false;
+    const fetchEmployees = async () => {
+      try {
+        const data = await employeeService.getAll();
+        if (ignore) return;
+        setEmployees(data);
+        console.log('社員データを正常に取得しました:', data.length + '件');
+      } catch (error) {
+        console.error('社員データの取得に失敗しました:', error);
+        if (!ignore) {
+          alert('社員データの取得に失敗しました。管理者にお問い合わせください。\n' +
+                'エラー: ' + (error as Error).message);
+        }
+      }
+    };
     fetchEmployees();
     updateCurrentTime();
     const interval = setInterval(updateCurrentTime, 1000);
-    return () => clearInterval(interval);
+    return () => {
+      ignore = true;
+      clearInterval(interval);
+    };
   }, []);
 
   // 社員が変更された時にカレンダーが開いている場合は自動で更新
@@ -57,18 +106,6 @@ const TimeClock: React.FC = () => {
       fetchTodayRecord(selectedEmployee);
     }
   }, [selectedEmployee, showCalendar, fetchEmployeeRecords, fetchTodayRecord]);
-
-  const fetchEmployees = async () => {
-    try {
-      const data = await employeeService.getAll();
-      setEmployees(data);
-      console.log('社員データを正常に取得しました:', data.length + '件');
-    } catch (error) {
-      console.error('社員データの取得に失敗しました:', error);
-      alert('社員データの取得に失敗しました。管理者にお問い合わせください。\n' + 
-            'エラー: ' + (error as Error).message);
-    }
-  };
 
   const updateCurrentTime = () => {
     const now = new Date();
@@ -87,10 +124,8 @@ const TimeClock: React.FC = () => {
       await fetchTodayRecord(selectedEmployee);
     }
 
-    // デフォルト値を設定
-    const now = new Date();
-    const timeString = now.toTimeString().slice(0, 5); // HH:MM形式
-    setSpecifiedTime(timeString);
+    // デフォルト値を設定（JST基準。ブラウザのタイムゾーンに依存しない）
+    setSpecifiedTime(getJSTTimeString()); // HH:MM形式
     setUseSpecifiedTime(false);
     setIsDirectWork(false);
 
@@ -98,14 +133,19 @@ const TimeClock: React.FC = () => {
   };
 
   const confirmClockAction = async () => {
+    // 二重送信防止：処理中は何もしない
+    if (isSubmitting) return;
+
+    // 時刻未入力バリデーション（モーダルは閉じずに再入力を促す）
+    if (useSpecifiedTime && !specifiedTime) {
+      alert('時刻を入力してください');
+      return;
+    }
+
+    setIsSubmitting(true);
     try {
       if (useSpecifiedTime) {
         // 時刻指定の場合
-        if (!specifiedTime) {
-          alert('時刻を入力してください');
-          return;
-        }
-
         // 指定時刻をISO形式に変換（タイムゾーンを考慮）
         // 重要: 日付はJST基準で取得する。new Date().toISOString() はUTC日付を返すため、
         // JSTの午前0時〜9時台では前日にズレ、退勤時刻が出勤時刻より前の絶対時刻になり、
@@ -152,6 +192,7 @@ const TimeClock: React.FC = () => {
       console.error('打刻に失敗しました:', error);
       alert(`打刻に失敗しました: ${error instanceof Error ? error.message : 'エラーが発生しました'}`);
     } finally {
+      setIsSubmitting(false);
       setShowConfirmModal(false);
       setUseSpecifiedTime(false);
       setIsDirectWork(false);
@@ -183,7 +224,8 @@ const TimeClock: React.FC = () => {
     if (isNaN(d.getTime())) return '--:--';
     return d.toLocaleTimeString('ja-JP', {
       hour: '2-digit',
-      minute: '2-digit'
+      minute: '2-digit',
+      timeZone: 'Asia/Tokyo' // ブラウザのタイムゾーンに依存しない
     });
   };
 
@@ -191,7 +233,7 @@ const TimeClock: React.FC = () => {
     if (!dateString) return '—';
     const d = new Date(dateString);
     if (isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('ja-JP');
+    return d.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' });
   };
 
   return (
@@ -216,7 +258,18 @@ const TimeClock: React.FC = () => {
         </select>
       </div>
 
-      {selectedEmployee && todayRecord && (
+      {selectedEmployee && todayRecordError && (
+        <div className="today-status-container">
+          <div className="today-status-header">
+            <h3>{selectedEmployeeName}さんの本日の状況</h3>
+          </div>
+          <div className="today-status-card">
+            <div style={{ textAlign: 'center', color: '#c0392b', padding: '10px' }}>記録の取得に失敗しました</div>
+          </div>
+        </div>
+      )}
+
+      {selectedEmployee && todayRecord && !todayRecordError && (
         <div className="today-status-container">
           <div className="today-status-header">
             <h3>{selectedEmployeeName}さんの本日の状況</h3>
@@ -225,21 +278,10 @@ const TimeClock: React.FC = () => {
             <div className="status-info-row">
               <div className="status-date">
                 <span className="date-label">本日</span>
-                <span className="date-value">{new Date().toLocaleDateString('ja-JP')}</span>
+                <span className="date-value">{new Date().toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}</span>
               </div>
-              <div className={`status-badge-today status-${
-                todayRecord.status === '通常' ? 'normal' :
-                (todayRecord.status ?? '').includes('遅刻') ? 'late' :
-                (todayRecord.status ?? '').includes('早退') ? 'early' :
-                (todayRecord.status ?? '').includes('残業') ? 'overtime' : 'normal'
-              }`}>
-                {todayRecord.status === '通常' ? '✅ 通常' :
-                 todayRecord.status === '遅刻' ? '⚠️ 遅刻' :
-                 todayRecord.status === '早退' ? '🏃 早退' :
-                 todayRecord.status === '残業' ? '💪 残業' :
-                 todayRecord.status === '遅刻・早退' ? '⚠️🏃 遅刻・早退' :
-                 todayRecord.status === '遅刻・残業' ? '⚠️💪 遅刻・残業' :
-                 todayRecord.status}
+              <div className={`status-badge-today status-${statusToClass(todayRecord.status)}`}>
+                {statusToLabel(todayRecord.status)}
               </div>
             </div>
             <div className="time-info-row">
@@ -282,32 +324,23 @@ const TimeClock: React.FC = () => {
       {selectedEmployee && (
         <div className={`employee-calendar-compact ${!showCalendar ? 'collapsed' : ''}`}>
           <div className="calendar-toggle" onClick={toggleCalendar}>
-            <h3>{currentDate.getFullYear()}年{currentDate.getMonth() + 1}月の勤務記録</h3>
+            <h3>{currentYearMonth.year}年{currentYearMonth.month}月の勤務記録</h3>
             <span className={`toggle-icon ${!showCalendar ? 'collapsed' : ''}`}>▼</span>
           </div>
           
           {showCalendar && (
             <div className="records-list-compact">
-              {employeeRecords.length === 0 ? (
+              {recordsError ? (
+                <div className="no-records">記録の取得に失敗しました</div>
+              ) : employeeRecords.length === 0 ? (
                 <div className="no-records">記録がありません</div>
               ) : (
                 employeeRecords.map((record) => (
                   <div key={record.id} className="record-item-compact">
                     <div className="record-header">
                       <div className="record-date">{formatDate(record.record_date)}</div>
-                      <div className={`record-status status-${
-                        record.status === '通常' ? 'normal' :
-                        (record.status ?? '').includes('遅刻') ? 'late' :
-                        (record.status ?? '').includes('早退') ? 'early' :
-                        (record.status ?? '').includes('残業') ? 'overtime' : 'normal'
-                      }`}>
-                        {record.status === '通常' ? '✅ 通常' :
-                         record.status === '遅刻' ? '⚠️ 遅刻' :
-                         record.status === '早退' ? '🏃 早退' :
-                         record.status === '残業' ? '💪 残業' :
-                         record.status === '遅刻・早退' ? '⚠️🏃 遅刻・早退' :
-                         record.status === '遅刻・残業' ? '⚠️💪 遅刻・残業' :
-                         record.status}
+                      <div className={`record-status status-${statusToClass(record.status)}`}>
+                        {statusToLabel(record.status)}
                       </div>
                     </div>
                     <div className="record-body">
@@ -407,9 +440,10 @@ const TimeClock: React.FC = () => {
               </button>
               <button
                 onClick={confirmClockAction}
+                disabled={isSubmitting}
                 className={`btn-primary ${clockType === 'in' ? 'btn-confirm-in' : 'btn-confirm-out'}`}
               >
-                確認
+                {isSubmitting ? '処理中...' : '確認'}
               </button>
             </div>
           </div>

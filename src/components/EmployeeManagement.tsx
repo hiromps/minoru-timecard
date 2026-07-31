@@ -7,6 +7,8 @@ const EmployeeManagement: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [showModal, setShowModal] = useState(false);
   const [editingEmployee, setEditingEmployee] = useState<Employee | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [fetchError, setFetchError] = useState(false);
   const [formData, setFormData] = useState<Omit<Employee, 'id' | 'created_at' | 'updated_at'>>({
     employee_id: '',
     name: '',
@@ -16,20 +18,31 @@ const EmployeeManagement: React.FC = () => {
   });
 
   useEffect(() => {
-    fetchEmployees();
+    // アンマウント後のsetStateを防ぐためのフラグ
+    let ignore = false;
+    fetchEmployees(() => ignore);
+    return () => {
+      ignore = true;
+    };
   }, []);
 
-  const fetchEmployees = async () => {
+  // 社員一覧を取得。isStale はアンマウント後のsetStateを防ぐためのフラグ取得関数
+  const fetchEmployees = async (isStale?: () => boolean) => {
     try {
       const data = await employeeService.getAll();
+      if (isStale?.()) return;
       setEmployees(data);
+      setFetchError(false);
     } catch (error) {
       console.error('社員データの取得に失敗しました:', error);
+      if (!isStale?.()) setFetchError(true);
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    // 連打による二重送信（二重create）防止
+    if (saving) return;
     console.log('🎯 フォーム送信開始:', formData);
 
     // 所定終業 > 所定始業 を検証。逆転設定は勤怠判定が破綻し '設定エラー' を
@@ -40,6 +53,7 @@ const EmployeeManagement: React.FC = () => {
       return;
     }
 
+    setSaving(true);
     try {
       if (editingEmployee) {
         // 更新
@@ -54,7 +68,7 @@ const EmployeeManagement: React.FC = () => {
         console.log('✅ 社員作成完了:', result);
         alert('社員を追加しました');
       }
-      
+
       console.log('🔄 社員一覧を再取得中...');
       await fetchEmployees();
       closeModal();
@@ -66,6 +80,8 @@ const EmployeeManagement: React.FC = () => {
         error: error
       });
       alert(`エラー: ${error instanceof Error ? error.message : '保存に失敗しました'}`);
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -133,6 +149,20 @@ const EmployeeManagement: React.FC = () => {
         </button>
       </div>
 
+      {fetchError && (
+        <div style={{ color: '#c0392b', margin: '10px 0' }}>
+          <span>社員データの取得に失敗しました</span>
+          <button
+            type="button"
+            onClick={() => fetchEmployees()}
+            className="btn btn-secondary"
+            style={{ marginLeft: '10px' }}
+          >
+            再試行
+          </button>
+        </div>
+      )}
+
       <div className="employee-list">
         <table>
           <thead>
@@ -174,7 +204,7 @@ const EmployeeManagement: React.FC = () => {
             {employees.length === 0 && (
               <tr>
                 <td colSpan={5} className="no-data">
-                  社員データがありません
+                  {fetchError ? '社員データの取得に失敗しました' : '社員データがありません'}
                 </td>
               </tr>
             )}
@@ -257,8 +287,8 @@ const EmployeeManagement: React.FC = () => {
               </div>
 
               <div className="form-actions">
-                <button type="submit" className="btn btn-primary">
-                  {editingEmployee ? '更新' : '追加'}
+                <button type="submit" className="btn btn-primary" disabled={saving}>
+                  {saving ? '保存中...' : editingEmployee ? '更新' : '追加'}
                 </button>
                 <button type="button" onClick={closeModal} className="btn btn-secondary">
                   キャンセル
