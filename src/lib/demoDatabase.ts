@@ -1,7 +1,7 @@
 import { Employee, TimeRecord, TimeRecordStatus } from './supabase'
 import { mockEmployees, mockTimeRecords } from './mockData'
-import { getJSTDate } from '../utils/dateUtils'
-import { calculateWorkTimeAndStatus } from '../utils/workTimeUtils'
+import { getJSTDate, getJSTMonthRange } from '../utils/dateUtils'
+import { calculateWorkTimeAndStatus, applyDirectWorkOverride } from '../utils/workTimeUtils'
 
 // デモ環境用のデータベースサービス
 export const demoEmployeeService = {
@@ -130,13 +130,17 @@ export const demoTimeRecordService = {
       throw new Error('社員が見つかりません')
     }
 
-    // 勤務時間・ステータス・残業時間を計算（統一関数を使用・DBの勤務時間基準）
-    const { actualWorkHours, status, overtimeMinutes } = calculateWorkTimeAndStatus(
-      mockTimeRecords[existingIndex].clock_in_time,
-      now,
-      employee.work_start_time,
-      employee.work_end_time,
-      today
+    // 勤務時間・ステータス・残業時間を計算（統一関数を使用・DBの勤務時間基準）。
+    // 出勤時に保存された直行直帰フラグを本番経路と同様に適用する。
+    const { actualWorkHours, status, overtimeMinutes } = applyDirectWorkOverride(
+      calculateWorkTimeAndStatus(
+        mockTimeRecords[existingIndex].clock_in_time,
+        now,
+        employee.work_start_time,
+        employee.work_end_time,
+        today
+      ),
+      mockTimeRecords[existingIndex].is_direct_work === true
     )
 
     mockTimeRecords[existingIndex] = {
@@ -191,6 +195,8 @@ export const demoTimeRecordService = {
       status,
       work_hours: 0,
       overtime_minutes: 0,
+      // 本番（database.ts）と同様に出勤時へ永続化し、退勤時に再確認する
+      is_direct_work: isDirectWork,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
@@ -226,29 +232,28 @@ export const demoTimeRecordService = {
       throw new Error('社員が見つかりません')
     }
 
-    // 勤務時間・ステータス・残業時間を計算（統一関数を使用）
-    const calc = calculateWorkTimeAndStatus(
-      mockTimeRecords[existingIndex].clock_in_time,
-      specifiedTime,
-      employee.work_start_time,
-      employee.work_end_time,
-      today
+    // 直行・直帰判定は退勤時の引数だけでなく、出勤時に保存されたフラグも見る。
+    // 勤務時間・ステータス・残業は統一関数 + applyDirectWorkOverride で
+    // 本番経路（database.ts）・管理者再計算と同一の結果にする。
+    const directWork = isDirectWork || mockTimeRecords[existingIndex].is_direct_work === true
+    const { actualWorkHours, status, overtimeMinutes } = applyDirectWorkOverride(
+      calculateWorkTimeAndStatus(
+        mockTimeRecords[existingIndex].clock_in_time,
+        specifiedTime,
+        employee.work_start_time,
+        employee.work_end_time,
+        today
+      ),
+      directWork
     )
-
-    // 直行・直帰モードの場合は出勤時のステータスを維持し残業は計上しない
-    let status: TimeRecordStatus = mockTimeRecords[existingIndex].status
-    let overtimeMinutes = 0
-    if (!isDirectWork) {
-      status = calc.status
-      overtimeMinutes = calc.overtimeMinutes
-    }
 
     mockTimeRecords[existingIndex] = {
       ...mockTimeRecords[existingIndex],
       clock_out_time: specifiedTime,
-      work_hours: calc.actualWorkHours,
+      work_hours: actualWorkHours,
       status,
       overtime_minutes: overtimeMinutes,
+      is_direct_work: directWork,
       updated_at: new Date().toISOString()
     }
 
@@ -267,9 +272,8 @@ export const demoTimeRecordService = {
     let records = mockTimeRecords.filter(record => record.employee_id === employeeId)
 
     if (year && month) {
-      const startDate = `${year}-${month.toString().padStart(2, '0')}-01`
-      const lastDay = new Date(year, month, 0).getDate()
-      const endDate = `${year}-${month.toString().padStart(2, '0')}-${lastDay.toString().padStart(2, '0')}`
+      // 月範囲の算出は dateUtils に集約（重複実装の二重管理を避ける）
+      const { startDate, endDate } = getJSTMonthRange(year, month)
       records = records.filter(record => record.record_date >= startDate && record.record_date <= endDate)
     }
 

@@ -171,12 +171,17 @@ export const correctTimeRecordByDeleteAndCreate = async (
 
     // 既存記録の直行直帰フラグを引き継ぐ（修正で直行直帰を勝手に解除しない）。
     // 削除→再作成でフラグが失われると、直行直帰なのに遅刻/早退/残業が誤付与される。
-    const { data: existingRecord } = await supabase
+    // 取得失敗を無視して false に落とすと同じ誤付与が起こるため、エラー時は中断する。
+    const { data: existingRecord, error: existingError } = await supabase
       .from('time_records')
       .select('is_direct_work')
       .eq('employee_id', employee_id)
       .eq('record_date', record_date)
       .maybeSingle();
+    if (existingError) {
+      console.error('Error fetching existing record:', existingError);
+      throw new Error('既存記録の取得に失敗しました: ' + existingError.message);
+    }
     const isDirectWork = existingRecord?.is_direct_work === true;
 
     // 社員の個別勤務時間を使用してステータスを計算（record_date基準でJST判定）。
@@ -218,8 +223,9 @@ export const correctTimeRecordByDeleteAndCreate = async (
       throw new Error('打刻記録の修正に失敗しました: ' + rpcError.message);
     }
 
-    // 監査ログを記録
-    await logCorrectionAction(employee_id, record_date, 'DELETE', reason, (newRecord as any)?.id);
+    // 監査ログを記録。実態は「修正」なので UPDATE で記録する
+    // （audit_logs_action_check 制約により INSERT/UPDATE/DELETE/SELECT のみ許可）。
+    await logCorrectionAction(employee_id, record_date, 'UPDATE', reason, (newRecord as any)?.id);
 
   } catch (error) {
     console.error('Error in correctTimeRecordByDeleteAndCreate:', error);
@@ -254,12 +260,18 @@ export const updateTimeRecord = async (
     }
 
     // 既存記録の直行直帰フラグを取得（更新でも直行直帰の扱いを維持する）。
-    const { data: existingRecord } = await supabase
+    // 取得失敗を無視して false に落とすと直行直帰記録に遅刻/残業が誤付与される
+    // ため、エラー時は中断する。
+    const { data: existingRecord, error: existingError } = await supabase
       .from('time_records')
       .select('is_direct_work')
       .eq('employee_id', employee_id)
       .eq('record_date', record_date)
       .maybeSingle();
+    if (existingError) {
+      console.error('Error fetching existing record:', existingError);
+      throw new Error('既存記録の取得に失敗しました: ' + existingError.message);
+    }
     const isDirectWork = existingRecord?.is_direct_work === true;
 
     // 社員の個別勤務時間を使用してステータスを計算（record_date基準でJST判定）。
@@ -281,7 +293,9 @@ export const updateTimeRecord = async (
 
     console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分, 直行直帰: ${isDirectWork}`);
 
-    const { data: updatedRecord, error } = await supabase
+    // .single() は重複行が存在する日に「更新は済んだのにエラー」という
+    // 不整合な結果になるため使わず、配列で受けて先頭を参照する。
+    const { data: updatedRecords, error } = await supabase
       .from('time_records')
       .update({
         clock_in_time: formattedClockIn,
@@ -293,16 +307,18 @@ export const updateTimeRecord = async (
       })
       .eq('employee_id', employee_id)
       .eq('record_date', record_date)
-      .select()
-      .single();
+      .select();
 
     if (error) {
       console.error('Error updating record:', error);
       throw new Error('レコードの更新に失敗しました');
     }
+    if (!updatedRecords || updatedRecords.length === 0) {
+      throw new Error('更新対象の打刻記録が見つかりませんでした');
+    }
 
     // 監査ログを記録
-    await logCorrectionAction(employee_id, record_date, 'UPDATE', reason, updatedRecord?.id);
+    await logCorrectionAction(employee_id, record_date, 'UPDATE', reason, updatedRecords[0]?.id);
 
   } catch (error) {
     console.error('Error in updateTimeRecord:', error);
@@ -424,6 +440,7 @@ export const recalculateAllStatus = async (): Promise<void> => {
 
     // 各記録のステータスを再計算
     let updatedCount = 0;
+    let failedCount = 0;
     for (const record of records || []) {
       const employee = employeeMap.get(record.employee_id);
       if (!employee) continue;
@@ -454,9 +471,15 @@ export const recalculateAllStatus = async (): Promise<void> => {
 
       if (updateError) {
         console.error(`Error updating record ${record.id}:`, updateError);
+        failedCount++;
       } else {
         updatedCount++;
       }
+    }
+
+    // 部分失敗を「完了」として黙って報告しない。失敗があれば呼び出し元へ通知する。
+    if (failedCount > 0) {
+      throw new Error(`再計算で ${failedCount} 件の更新に失敗しました（成功 ${updatedCount} 件）`);
     }
 
     console.log(`✅ Status recalculation completed. Updated ${updatedCount} records.`);
@@ -526,6 +549,7 @@ export const getMonthlySummary = async (year: number, month: number): Promise<Mo
     let employees: { employee_id: string; name: string }[] = [];
     let records: {
       employee_id: string;
+      record_date: string;
       clock_in_time: string | null;
       clock_out_time: string | null;
       work_hours: number | null;
@@ -543,6 +567,7 @@ export const getMonthlySummary = async (year: number, month: number): Promise<Mo
         .filter(r => r.record_date >= startDate && r.record_date <= endDate)
         .map(r => ({
           employee_id: r.employee_id,
+          record_date: r.record_date,
           clock_in_time: r.clock_in_time,
           clock_out_time: r.clock_out_time,
           work_hours: r.work_hours,
@@ -563,7 +588,7 @@ export const getMonthlySummary = async (year: number, month: number): Promise<Mo
 
       const { data: recordsData, error: recordsError } = await supabase
         .from('time_records')
-        .select('employee_id, clock_in_time, clock_out_time, work_hours, overtime_minutes, status')
+        .select('employee_id, record_date, clock_in_time, clock_out_time, work_hours, overtime_minutes, status')
         .gte('record_date', startDate)
         .lte('record_date', endDate);
 
@@ -619,14 +644,22 @@ export const getMonthlySummary = async (year: number, month: number): Promise<Mo
       if (hasIn && hasOut) {
         // 完了日のみ勤務日数に計上
         row.workDays += 1;
-        // 実打刻から分単位で積算（丸め誤差を避ける）
-        const inMs = new Date(record.clock_in_time as string).getTime();
-        const outMs = new Date(record.clock_out_time as string).getTime();
+        // 実労働時間は正典 calculateWorkTimeAndStatus から分単位で積算する。
+        // 生の (退勤-出勤) 差分だと所定昼休憩(JST 12:00-13:00)の控除が抜けて
+        // 休憩を跨ぐ日ごとに最大60分過大計上され、日次の work_hours 表示とも
+        // 食い違う。actualWorkHours は休憩控除込み・所定時刻に依存しない。
+        const calc = calculateWorkTimeAndStatus(
+          record.clock_in_time,
+          record.clock_out_time,
+          undefined,
+          undefined,
+          record.record_date
+        );
         const prev = totalWorkMinutesMap.get(record.employee_id) || 0;
-        if (!isNaN(inMs) && !isNaN(outMs) && outMs > inMs) {
-          totalWorkMinutesMap.set(record.employee_id, prev + (outMs - inMs) / (1000 * 60));
+        if (calc.status !== '設定エラー') {
+          totalWorkMinutesMap.set(record.employee_id, prev + calc.actualWorkHours * 60);
         } else {
-          // 不正打刻はフォールバックで保存済み work_hours を分換算
+          // 不正打刻（退勤<=出勤等）はフォールバックで保存済み work_hours を分換算
           totalWorkMinutesMap.set(record.employee_id, prev + (record.work_hours || 0) * 60);
         }
       } else if (hasIn && !hasOut) {

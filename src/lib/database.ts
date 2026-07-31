@@ -1,7 +1,7 @@
 import { supabase, Employee, TimeRecord, TimeRecordStatus, isDevMode } from './supabase'
 import { demoEmployeeService, demoTimeRecordService } from './demoDatabase'
 import { getJSTDate, getJSTMonthRange } from '../utils/dateUtils'
-import { calculateWorkTimeAndStatus } from '../utils/workTimeUtils'
+import { calculateWorkTimeAndStatus, applyDirectWorkOverride } from '../utils/workTimeUtils'
 
 /**
  * 退勤対象の出勤レコードを取得する（本番Supabase経路用）。
@@ -37,12 +37,19 @@ async function findOpenRecordForClockOut(
     return open ?? sameDay[0]
   }
 
-  // 2) 日跨ぎ勤務: 当該社員の最新の未退勤レコードにフォールバック
+  // 2) 日跨ぎ勤務: 当該社員の未退勤レコードにフォールバック。
+  //    対象は前日以降に限定する。数日前の退勤忘れレコードまで拾うと、
+  //    本日の退勤タップでそこに数日分の勤務時間・残業が計上されてしまう
+  //    （古い未退勤は管理者の打刻修正で対応する）。
+  const prevDate = new Date(`${today}T00:00:00Z`)
+  prevDate.setUTCDate(prevDate.getUTCDate() - 1)
+  const yesterday = prevDate.toISOString().slice(0, 10)
   const { data: openRecords, error: openError } = await supabase
     .from('time_records')
     .select('*')
     .eq('employee_id', employeeId)
     .is('clock_out_time', null)
+    .gte('record_date', yesterday)
     .order('clock_in_time', { ascending: false })
     .limit(1)
   if (openError) {
@@ -201,17 +208,19 @@ export const timeRecordService = {
 
     // 二重出勤の事前チェック。DBの部分ユニーク索引違反による不可解な
     // 「打刻に失敗しました」ではなく、明確なメッセージで弾く。
+    // .maybeSingle() は重複行が既に存在する日に複数行エラーで打刻不能になる
+    // ため、.limit(1) の配列で受ける。
     const { data: existing, error: existingError } = await supabase
       .from('time_records')
       .select('id')
       .eq('employee_id', employeeId)
       .eq('record_date', today)
-      .maybeSingle()
+      .limit(1)
     if (existingError) {
       console.error('❌ 既存記録確認エラー:', existingError)
       throw new Error('出勤記録の確認に失敗しました: ' + existingError.message)
     }
-    if (existing) {
+    if (existing && existing.length > 0) {
       throw new Error('本日は既に出勤打刻済みです')
     }
 
@@ -249,6 +258,11 @@ export const timeRecordService = {
     if (error) {
       console.error('❌ 出勤打刻エラー:', error)
       console.error('❌ エラー詳細:', JSON.stringify(error, null, 2))
+      // 事前チェックは非アトミック（TOCTOU）のため、同時タップ等で
+      // 部分ユニーク索引違反(23505)がすり抜けた場合も明確なメッセージにする
+      if (error.code === '23505') {
+        throw new Error('本日は既に出勤打刻済みです')
+      }
       throw error
     }
 
@@ -284,13 +298,22 @@ export const timeRecordService = {
       throw new Error('本日の出勤記録が見つかりません')
     }
 
-    // 勤務時間・ステータス・残業時間を計算（統一関数を使用・DBの勤務時間基準）
-    const { actualWorkHours: workHours, status: finalStatus, overtimeMinutes } = calculateWorkTimeAndStatus(
-      todayRecord.clock_in_time,
-      currentTime,
-      employee.work_start_time,
-      employee.work_end_time,
-      todayRecord.record_date
+    // 退勤済みレコードへの黙った上書きを防ぐ（デモモードの挙動とも統一）
+    if (todayRecord.clock_out_time) {
+      throw new Error('本日は既に退勤打刻済みです')
+    }
+
+    // 勤務時間・ステータス・残業時間を計算（統一関数を使用・DBの勤務時間基準）。
+    // 出勤時に保存された直行直帰フラグを全経路と同様に適用する。
+    const { actualWorkHours: workHours, status: finalStatus, overtimeMinutes } = applyDirectWorkOverride(
+      calculateWorkTimeAndStatus(
+        todayRecord.clock_in_time,
+        currentTime,
+        employee.work_start_time,
+        employee.work_end_time,
+        todayRecord.record_date
+      ),
+      todayRecord.is_direct_work === true
     )
 
     console.log('📝 退勤データ更新開始:', {
@@ -342,18 +365,20 @@ export const timeRecordService = {
     const clockInTime = new Date(specifiedTime)
     const today = getJSTDate(clockInTime)
 
-    // 二重出勤の事前チェック（部分ユニーク索引違反の不可解なエラーを防ぐ）
+    // 二重出勤の事前チェック（部分ユニーク索引違反の不可解なエラーを防ぐ）。
+    // .maybeSingle() は重複行が既に存在する日に複数行エラーで打刻不能になる
+    // ため、.limit(1) の配列で受ける。
     const { data: existing, error: existingError } = await supabase
       .from('time_records')
       .select('id')
       .eq('employee_id', employeeId)
       .eq('record_date', today)
-      .maybeSingle()
+      .limit(1)
     if (existingError) {
       console.error('❌ 既存記録確認エラー:', existingError)
       throw new Error('出勤記録の確認に失敗しました: ' + existingError.message)
     }
-    if (existing) {
+    if (existing && existing.length > 0) {
       throw new Error('該当日は既に出勤打刻済みです')
     }
 
@@ -396,6 +421,11 @@ export const timeRecordService = {
     if (error) {
       console.error('❌ 時刻指定出勤打刻エラー:', error)
       console.error('❌ エラー詳細:', JSON.stringify(error, null, 2))
+      // 事前チェックは非アトミック（TOCTOU）のため、同時操作等で
+      // 部分ユニーク索引違反(23505)がすり抜けた場合も明確なメッセージにする
+      if (error.code === '23505') {
+        throw new Error('該当日は既に出勤打刻済みです')
+      }
       throw error
     }
 
@@ -428,25 +458,25 @@ export const timeRecordService = {
       throw new Error('本日の出勤記録が見つかりません')
     }
 
-    // 勤務時間・ステータス・残業時間を計算（統一関数を使用）
-    const calc = calculateWorkTimeAndStatus(
-      todayRecord.clock_in_time,
-      specifiedTime,
-      employee.work_start_time,
-      employee.work_end_time,
-      todayRecord.record_date
-    )
-    const workHours = calc.actualWorkHours
+    // 退勤済みレコードへの黙った上書きを防ぐ（デモモードの挙動とも統一）
+    if (todayRecord.clock_out_time) {
+      throw new Error('該当日は既に退勤打刻済みです')
+    }
 
     // 直行・直帰判定は退勤時の引数だけでなく、出勤時にDB保存されたフラグも見る。
-    // 直行直帰なら出勤時ステータスを維持し残業は計上しない（勤務時間は計上）。
+    // 勤務時間・ステータス・残業時間は統一関数で計算し、直行直帰の扱いも
+    // 全経路共通の applyDirectWorkOverride で統一する（管理者再計算と同一結果）。
     const directWork = isDirectWork || todayRecord.is_direct_work === true
-    let finalStatus: TimeRecordStatus = todayRecord.status
-    let overtimeMinutes = 0
-    if (!directWork) {
-      finalStatus = calc.status
-      overtimeMinutes = calc.overtimeMinutes
-    }
+    const { actualWorkHours: workHours, status: finalStatus, overtimeMinutes } = applyDirectWorkOverride(
+      calculateWorkTimeAndStatus(
+        todayRecord.clock_in_time,
+        specifiedTime,
+        employee.work_start_time,
+        employee.work_end_time,
+        todayRecord.record_date
+      ),
+      directWork
+    )
 
     console.log('📝 時刻指定退勤データ更新開始:', {
       id: todayRecord.id,
@@ -565,13 +595,13 @@ export const timeRecordService = {
       throw employeesError
     }
 
-    // データを結合
-    return (records || []).map((record: TimeRecord) => {
-      const employee = employees?.find((emp: any) => emp.employee_id === record.employee_id)
-      return {
-        ...record,
-        employee_name: employee?.name || record.employee_id
-      }
-    })
+    // データを結合（O(n×m) の find ではなく Map で参照）
+    const nameByEmployeeId = new Map<string, string>(
+      (employees || []).map((emp: { employee_id: string; name: string }) => [emp.employee_id, emp.name])
+    )
+    return (records || []).map((record: TimeRecord) => ({
+      ...record,
+      employee_name: nameByEmployeeId.get(record.employee_id) || record.employee_id
+    }))
   }
 }

@@ -20,9 +20,10 @@ const createMockSupabaseClient = () => {
       signUp: async () => ({ data: null, error: new Error('デモモード') }),
       getUser: async () => ({ data: { user: null }, error: null }),
       signOut: async () => ({ error: null }),
-      onAuthStateChange: () => ({ 
-        data: { subscription: null },
-        unsubscribe: () => {}
+      // 実APIと同じ形状（data.subscription.unsubscribe()）を返す。
+      // subscription: null だと購読解除コードがデモモードで null 参照になる。
+      onAuthStateChange: () => ({
+        data: { subscription: { unsubscribe: () => {} } }
       })
     },
     from: () => ({
@@ -95,9 +96,11 @@ if (isDevMode) {
     supabase = createClient(supabaseUrl, supabaseAnonKey)
     console.log('✅ 実際のSupabaseクライアント作成完了')
   } catch (error) {
+    // 本番モードでの初期化失敗をモックに黙ってフォールバックすると、
+    // 設定ミスの本番ビルドが「空データで動いているように見える」ため危険。
+    // 明示的に失敗させて起動時に気づけるようにする。
     console.error('❌ Supabaseクライアント作成エラー:', error)
-    console.log('🔄 フォールバック: モッククライアントを使用')
-    supabase = createMockSupabaseClient()
+    throw error
   }
 }
 
