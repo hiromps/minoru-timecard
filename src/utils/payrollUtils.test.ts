@@ -55,6 +55,20 @@ describe('getDefaultClosingMonth', () => {
   it('1月10日は前年12月締め', () => {
     expect(getDefaultClosingMonth(new Date('2026-01-10T12:00:00Z'))).toEqual({ year: 2025, month: 12 });
   });
+
+  describe('JSTちょうど25日の境界（TZ非依存）', () => {
+    it('JST 25日 0:00 ちょうど（UTC 24日15:00）は前月締め', () => {
+      expect(getDefaultClosingMonth(new Date('2026-07-24T15:00:00Z'))).toEqual({ year: 2026, month: 6 });
+    });
+
+    it('JST 25日 23:59（UTC 25日14:59）はまだ前月締め', () => {
+      expect(getDefaultClosingMonth(new Date('2026-07-25T14:59:59Z'))).toEqual({ year: 2026, month: 6 });
+    });
+
+    it('JST 26日 0:00 ちょうど（UTC 25日15:00）から当月締め', () => {
+      expect(getDefaultClosingMonth(new Date('2026-07-25T15:00:00Z'))).toEqual({ year: 2026, month: 7 });
+    });
+  });
 });
 
 describe('shiftClosingMonth', () => {
@@ -126,6 +140,76 @@ describe('validatePayroll（不備検出）', () => {
     const t = report.employeeTotals[0];
     expect(t.workDays).toBe(1);
     expect(t.totalWorkHours).toBe(7);
+    expect(t.totalOvertimeMinutes).toBe(30);
+  });
+
+  it('出勤・退勤ありで勤務時間0は警告', () => {
+    const report = validatePayroll(
+      [rec({ work_hours: 0 })],
+      [{ employee_id: '001', name: '田中太郎' }],
+      period
+    );
+    expect(report.errorCount).toBe(0);
+    expect(report.warningCount).toBe(1);
+    expect(report.issues[0].message).toContain('勤務時間が0です');
+  });
+
+  it('勤務時間16時間超は警告（打刻漏れの可能性）', () => {
+    const report = validatePayroll(
+      [rec({ work_hours: 17, clock_out_time: '2026-07-01T18:00:00.000Z' })],
+      [{ employee_id: '001', name: '田中太郎' }],
+      period
+    );
+    expect(report.warningCount).toBe(1);
+    expect(report.issues[0].message).toContain('勤務時間が長すぎます');
+  });
+
+  it('同一日重複は全行に警告（文言に集計除外の旨）し、2件目以降を集計から除外', () => {
+    const report = validatePayroll(
+      [
+        rec({ id: 1, record_date: '2026-07-01', work_hours: 7, overtime_minutes: 30 }),
+        rec({ id: 2, record_date: '2026-07-01', work_hours: 5, overtime_minutes: 60 }),
+      ],
+      [{ employee_id: '001', name: '田中太郎' }],
+      period
+    );
+    // 重複警告は両方の行に出る
+    const dupIssues = report.issues.filter((i) => i.message.includes('同一日に複数の記録'));
+    expect(dupIssues).toHaveLength(2);
+    dupIssues.forEach((i) => expect(i.message).toContain('集計から除外'));
+    // 集計は1件目のみ（workDays・勤務時間・残業とも2件目を含まない）
+    const t = report.employeeTotals.find((x) => x.employee_id === '001')!;
+    expect(t.workDays).toBe(1);
+    expect(t.totalWorkHours).toBe(7);
+    expect(t.totalOvertimeMinutes).toBe(30);
+  });
+
+  it('未退勤行の overtime_minutes は合計残業へ加算しない', () => {
+    const report = validatePayroll(
+      [
+        rec({ id: 1, record_date: '2026-07-01', overtime_minutes: 30 }),
+        rec({ id: 2, record_date: '2026-07-02', clock_out_time: null, work_hours: 0, overtime_minutes: 45 }),
+      ],
+      [{ employee_id: '001', name: '田中太郎' }],
+      period
+    );
+    const t = report.employeeTotals.find((x) => x.employee_id === '001')!;
+    // 未退勤行（エラー扱い）の45分は混入させない
+    expect(t.totalOvertimeMinutes).toBe(30);
+    expect(t.openDays).toBe(1);
+  });
+
+  it('設定エラー行の overtime_minutes は合計残業へ加算しない', () => {
+    const report = validatePayroll(
+      [
+        rec({ id: 1, record_date: '2026-07-01', overtime_minutes: 30 }),
+        rec({ id: 2, record_date: '2026-07-02', status: '設定エラー', work_hours: 0, overtime_minutes: 999 }),
+      ],
+      [{ employee_id: '001', name: '田中太郎' }],
+      period
+    );
+    expect(report.errorCount).toBe(1); // 設定エラーの検出は維持
+    const t = report.employeeTotals.find((x) => x.employee_id === '001')!;
     expect(t.totalOvertimeMinutes).toBe(30);
   });
 });

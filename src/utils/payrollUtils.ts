@@ -205,6 +205,9 @@ export const validatePayroll = (
   };
   // 勤務時間は分で積算し最後に一度だけ丸める（日次丸め誤差の回避）
   const totalMinutesMap = new Map<string, number>();
+  // 集計済みの社員×日付キー。同一社員・同一日の重複行は2件目以降を
+  // 勤務日数・勤務時間・残業の集計から除外するために使う（警告は全行に出す）
+  const aggregatedDayKeys = new Set<string>();
 
   for (const record of sorted) {
     const employee_name = record.employee_name || nameMap.get(record.employee_id) || `社員${record.employee_id}`;
@@ -248,12 +251,15 @@ export const validatePayroll = (
       addIssue('warning', `勤務時間が長すぎます（${workHours.toFixed(1)}時間・打刻漏れの可能性）`);
     }
 
-    if ((dayCount.get(`${record.employee_id}__${record.record_date}`) || 0) > 1) {
-      addIssue('warning', '同一日に複数の記録があります（重複の可能性）');
+    const dayKey = `${record.employee_id}__${record.record_date}`;
+    // 同一社員・同一日の2件目以降か（1件目は集計し、2件目以降は集計から除外）
+    const isDuplicateExtra = aggregatedDayKeys.has(dayKey);
+    if ((dayCount.get(dayKey) || 0) > 1) {
+      addIssue('warning', '同一日に複数の記録があります（重複の可能性・2件目以降は集計から除外）');
     }
 
     // --- 集計 ---
-    if (hasIn && hasOut) {
+    if (!isDuplicateExtra && hasIn && hasOut) {
       t.workDays += 1;
       totalMinutesMap.set(
         record.employee_id,
@@ -262,7 +268,12 @@ export const validatePayroll = (
     } else if (hasIn && !hasOut) {
       t.openDays += 1;
     }
-    t.totalOvertimeMinutes += record.overtime_minutes || 0;
+    // 残業も勤務時間と同様、出勤・退勤がそろい設定エラーでない行のみ加算する
+    // （未退勤行・設定エラー行の overtime_minutes を給与集計へ混入させない）
+    if (!isDuplicateExtra && hasIn && hasOut && record.status !== '設定エラー') {
+      t.totalOvertimeMinutes += record.overtime_minutes || 0;
+    }
+    aggregatedDayKeys.add(dayKey);
     if (record.status.includes('遅刻')) t.lateCount += 1;
     if (record.status.includes('早退')) t.earlyLeaveCount += 1;
 

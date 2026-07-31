@@ -9,10 +9,15 @@
  */
 export const formatWorkHours = (hours: number): string => {
   if (hours === 0) return '0時間0分';
-  
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
-  
+
+  let h = Math.floor(hours);
+  let m = Math.round((hours - h) * 60);
+  // 端数の丸めで60分になった場合は1時間へ繰り上げる（例: 7.996h → 「7時間60分」ではなく「8時間」）
+  if (m === 60) {
+    h += 1;
+    m = 0;
+  }
+
   if (h === 0) return `${m}分`;
   if (m === 0) return `${h}時間`;
   return `${h}時間${m}分`;
@@ -25,10 +30,15 @@ export const formatWorkHours = (hours: number): string => {
  */
 export const formatWorkHoursForCSV = (hours: number): string => {
   if (hours === 0) return '0:00';
-  
-  const h = Math.floor(hours);
-  const m = Math.round((hours - h) * 60);
-  
+
+  let h = Math.floor(hours);
+  let m = Math.round((hours - h) * 60);
+  // 端数の丸めで60分になった場合は1時間へ繰り上げる（例: 7.996h → 「7:60」ではなく「8:00」）
+  if (m === 60) {
+    h += 1;
+    m = 0;
+  }
+
   return `${h}:${m.toString().padStart(2, '0')}`;
 };
 
@@ -40,23 +50,13 @@ export const formatWorkHoursForCSV = (hours: number): string => {
 export const formatMinutesForCSV = (minutes: number): string => {
   if (!minutes || minutes <= 0) return '0:00';
 
-  const h = Math.floor(minutes / 60);
-  const m = Math.round(minutes % 60);
+  let h = Math.floor(minutes / 60);
+  let m = Math.round(minutes % 60);
+  // 分が小数の場合、丸めで60分になったら1時間へ繰り上げる（例: 119.7分 → 「1:60」ではなく「2:00」）
+  if (m === 60) {
+    h += 1;
+    m = 0;
+  }
 
   return `${h}:${m.toString().padStart(2, '0')}`;
-};
-
-/**
- * 時刻文字列から時間数を計算
- * @param startTime 開始時刻 (ISO string)
- * @param endTime 終了時刻 (ISO string)
- * @returns 時間数（小数点形式）
- */
-export const calculateWorkHours = (startTime: string, endTime: string): number => {
-  if (!startTime || !endTime) return 0;
-  
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  
-  return (end.getTime() - start.getTime()) / (1000 * 60 * 60);
 };

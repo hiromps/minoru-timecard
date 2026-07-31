@@ -1,5 +1,11 @@
 /**
- * Excelデータを使った残業判定ロジックの検証
+ * 【旧ロジックの一回性検証スクリプト】
+ * Excelデータを使った残業判定ロジックの検証（2026-05当時の旧仕様を検証した使い捨てスクリプト）。
+ *
+ * 注意: 本番ロジックとは無関係。ここにある計算（出勤09:00丸め・社員名ハードコードの
+ * 所定退勤表）は現行の正典 src/utils/workTimeUtils.ts の calculateWorkTimeAndStatus と
+ * 一致しない旧仕様であり、参照・流用しないこと。ビルド・テストの対象外。
+ * 実行する場合: node scripts/verifyWithExcel.js
  */
 const XLSX = require('xlsx');
 const path = require('path');
@@ -50,8 +56,8 @@ const calculateAttendance = (employeeName, clockIn, clockOut) => {
     };
 };
 
-// Excelファイルを読み込み
-const filePath = path.join(__dirname, '..', '..', '社員1-8_勤怠分析_個別退勤規則.xlsx');
+// Excelファイルを読み込み（プロジェクトルート直下。scripts/ からは1階層上）
+const filePath = path.join(__dirname, '..', '社員1-8_勤怠分析_個別退勤規則.xlsx');
 const workbook = XLSX.readFile(filePath);
 
 console.log('=== 残業判定ロジック検証 ===\n');

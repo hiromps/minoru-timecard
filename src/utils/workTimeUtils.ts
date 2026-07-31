@@ -165,26 +165,3 @@ export const applyDirectWorkOverride = (
   if (result.status === '設定エラー') return result;
   return { actualWorkHours: result.actualWorkHours, status: '通常', overtimeMinutes: 0 };
 };
-
-/**
- * 時刻文字列を今日の日付と結合
- * @param timeString "HH:MM:SS" 形式
- * @param baseDate 基準日（省略時は今日）
- * @returns Date オブジェクト
- */
-export const timeStringToDate = (timeString: string, baseDate?: Date): Date => {
-  const base = baseDate || new Date();
-  const dateString = base.toDateString();
-  return new Date(`${dateString} ${timeString}`);
-};
-
-/**
- * レガシー関数との互換性のため
- * @deprecated calculateWorkTimeAndStatus を使用してください
- */
-export const calculateWorkHours = (startTime: string, endTime: string): number => {
-  if (!startTime || !endTime) return 0;
-  const start = new Date(startTime);
-  const end = new Date(endTime);
-  return (end.getTime() - start.getTime()) / (1000 * 60 * 60);
-};

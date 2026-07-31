@@ -296,4 +296,62 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
       expect(out.actualWorkHours).toBeGreaterThan(0);
     });
   });
+
+  describe('境界・休憩帯・日跨ぎ（現行挙動の固定）', () => {
+    it('出勤=退勤（0分勤務・<=境界）は設定エラー', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00 出勤
+        '2026-05-27T00:00:00.000Z', // JST 09:00 退勤（同時刻）
+        '09:00:00',
+        '17:00:00',
+        '2026-05-27'
+      );
+      // 退勤 <= 出勤 の等号側の境界。負の勤務時間と同じく不正データ扱い
+      expect(r.status).toBe('設定エラー');
+      expect(r.actualWorkHours).toBe(0);
+      expect(r.overtimeMinutes).toBe(0);
+    });
+
+    it('休憩帯ちょうど 12:00-13:00 の勤務は全時間控除で実労働0（遅刻・早退）', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T03:00:00.000Z', // JST 12:00
+        '2026-05-27T04:00:00.000Z', // JST 13:00
+        '09:00:00',
+        '17:00:00',
+        '2026-05-27'
+      );
+      // gross 60分 - 休憩重なり60分 = 0分。ステータスは実打刻基準で遅刻・早退
+      expect(r.actualWorkHours).toBe(0);
+      expect(r.status).toBe('遅刻・早退');
+      expect(r.overtimeMinutes).toBe(0);
+    });
+
+    it('休憩帯内 12:15 出勤・17:00 退勤は休憩の残り45分のみ控除で実労働4h', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T03:15:00.000Z', // JST 12:15（休憩帯の途中で出勤）
+        '2026-05-27T08:00:00.000Z', // JST 17:00
+        '09:00:00',
+        '17:00:00',
+        '2026-05-27'
+      );
+      // gross 285分 - 休憩重なり45分(12:15〜13:00) = 240分 = 4h
+      expect(r.actualWorkHours).toBe(4);
+      expect(r.status).toBe('遅刻');
+      expect(r.overtimeMinutes).toBe(0);
+    });
+
+    it('UTC日跨ぎ（出勤がUTC前日）でも actualWorkHours を正しく計算', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-26T23:00:00.000Z', // JST 05-27 08:00（UTCでは前日）
+        '2026-05-27T09:00:00.000Z', // JST 05-27 18:00
+        '09:00:00',
+        '17:00:00',
+        '2026-05-27'
+      );
+      // gross 10h - 昼休憩1h = 9h。JSTでは同日勤務として扱われる
+      expect(r.actualWorkHours).toBe(9);
+      expect(r.status).toBe('残業');
+      expect(r.overtimeMinutes).toBe(60);
+    });
+  });
 });

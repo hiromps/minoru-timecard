@@ -34,13 +34,25 @@ export const getJSTMonthRange = (year: number, month: number): { startDate: stri
 };
 
 /**
- * ISO文字列から日本時間の日付部分を取得
- * @param {string} isoString - ISO形式の日時文字列
- * @returns {string} 日本時間での日付（YYYY-MM-DD）
+ * 現在の日本時間での時刻を取得（HH:MM形式）
+ * ブラウザのタイムゾーンに依存せず、常にJSTの壁時計時刻を返す。
+ * @returns {string} 日本時間での時刻（HH:MM）
  */
-export const getJSTDateFromISO = (isoString: string): string => {
-  const date = new Date(isoString);
-  return getJSTDate(date);
+export const getJSTTimeString = (date: Date = new Date()): string => {
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  const hours = String(jst.getUTCHours()).padStart(2, '0');
+  const minutes = String(jst.getUTCMinutes()).padStart(2, '0');
+  return `${hours}:${minutes}`;
+};
+
+/**
+ * 日本時間での年・月を取得（月次データ取得などの基準に使う）
+ * getFullYear()/getMonth() のローカルゲッター直接使用は月境界でズレるため禁止。
+ * @returns {object} JST基準の { year, month }（month は 1-12）
+ */
+export const getJSTYearMonth = (date: Date = new Date()): { year: number; month: number } => {
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return { year: jst.getUTCFullYear(), month: jst.getUTCMonth() + 1 };
 };
 
 /**
