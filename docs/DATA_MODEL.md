@@ -220,6 +220,8 @@ Supabase Auth（`auth.users`）と連携する管理者情報。`id` = `auth.uid
 | `遅刻・早退` | 遅刻 かつ 早退 |
 | `遅刻・残業` | 遅刻 かつ 残業 |
 | `設定エラー` | 出勤なしで退勤あり／所定終業 ≤ 所定始業（マスタ設定ミス・夜勤非対応）／退勤 ≤ 出勤（負の勤務時間） |
+| `欠勤` | 管理者が手動登録（`correctToAbsence`）。出勤・退勤とも`null`、`work_hours=0`。無給扱い（0009で追加） |
+| `有給` | 管理者が手動登録（`correctToPaidLeave`）。出勤・退勤とも`null`だが、`work_hours`に所定労働時間（`getScheduledWorkHours`）を保存し給与計算に算入する（0012で追加） |
 
 補足ロジック（`workTimeUtils.ts`）:
 - **昼休憩控除**: 所定昼休憩 JST 12:00〜13:00 と実勤務が重なった分のみ `work_hours` から控除。午前のみ・午後のみ勤務では控除しない。
@@ -232,6 +234,8 @@ Supabase Auth（`auth.users`）と連携する管理者情報。`id` = `auth.uid
   - `hourly`（アルバイト）: `overtime_minutes`は常に0。所定終業を60分超えたら`time_records.is_extended_hours`のみ立てる（給与計算には影響しない）。
   - `executive`（役員、0011で追加）: `overtime_minutes`は常に0。`hourly`と異なり`is_extended_hours`の記録は行わない。
   - 実装は `src/utils/workTimeUtils.ts` の `calculateWorkTimeAndStatus`（`overtimeRuleType`引数）に一本化。
+- **欠勤・有給の除外（`recalculateAllStatus`）**: `status`が`欠勤`または`有給`の記録は出勤・退勤とも`null`のため、通常の再計算ロジックに通すと`通常`・`work_hours=0`に上書きされてしまう。再計算の対象外として扱う。
+- **給与計算（`src/utils/payrollUtils.ts` の `validatePayroll`）**: `欠勤`は`work_hours`を集計に含めない（無給）。`有給`は`work_hours`（所定労働時間）を`totalWorkHours`に算入する（有給でも給与が発生するため）。社員別集計に`paidLeaveDays`として日数も出力する。
 
 > 集計での使い方（`getMonthlySummary`）: 遅刻回数は `status` に `'遅刻'` を含む行数、早退回数は `'早退'` を含む行数でカウント（複合ステータスも計上される）。
 

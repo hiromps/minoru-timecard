@@ -21,6 +21,7 @@
 --     残業ルール区分（standard/grace_15min/hourly）を社員マスタで管理する。
 --   * employees.overtime_rule_type に 'executive'（役員）区分を追加（0011）。
 --     残業代は計上しない。hourly と異なり長時間勤務フラグの記録も行わない。
+--   * time_records_status_check に '有給'（有給休暇。欠勤と異なり給与計算に算入する）を追加（0012）。
 --
 -- 注意:
 --   * (employee_id, record_date) の UNIQUE 制約は無い（1日1レコードはアプリ側で担保）。
@@ -68,7 +69,7 @@ CREATE TABLE IF NOT EXISTS public.time_records (
     is_direct_work   boolean NOT NULL DEFAULT false,      -- 直行・直帰（遅刻/早退/残業判定を無効化）
     is_extended_hours boolean NOT NULL DEFAULT false,     -- アルバイト(hourly)の長時間勤務フラグ。残業代とは無関係
     CONSTRAINT time_records_status_check CHECK (
-        status = ANY (ARRAY['通常','遅刻','早退','残業','遅刻・早退','遅刻・残業','設定エラー','欠勤'])
+        status = ANY (ARRAY['通常','遅刻','早退','残業','遅刻・早退','遅刻・残業','設定エラー','欠勤','有給'])
     ),
     CONSTRAINT check_work_hours CHECK (work_hours >= 0 AND work_hours <= 24),
     CONSTRAINT check_clock_times CHECK (

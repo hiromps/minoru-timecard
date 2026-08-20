@@ -1,4 +1,4 @@
-import { calculateWorkTimeAndStatus, applyDirectWorkOverride } from './workTimeUtils';
+import { calculateWorkTimeAndStatus, applyDirectWorkOverride, getScheduledWorkHours } from './workTimeUtils';
 
 /**
  * 統一計算関数 calculateWorkTimeAndStatus のテスト
@@ -495,5 +495,23 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
       expect(withDefault.overtimeMinutes).toBe(120);
       expect(withDefault.isExtendedHours).toBe(false);
     });
+  });
+});
+
+describe('getScheduledWorkHours（有給の所定労働時間算出）', () => {
+  it('9:00-17:00は昼休憩1h控除で所定労働時間7h', () => {
+    expect(getScheduledWorkHours('09:00:00', '17:00:00', '2026-05-27')).toBe(7);
+  });
+
+  it('休憩を跨がない午前のみ(9:00-12:00)は控除なしで3h', () => {
+    expect(getScheduledWorkHours('09:00:00', '12:00:00', '2026-05-27')).toBe(3);
+  });
+
+  it('"HH:MM"形式でも動作する', () => {
+    expect(getScheduledWorkHours('09:00', '17:00', '2026-05-27')).toBe(7);
+  });
+
+  it('所定終業 <= 所定始業（設定ミス）は0を返す', () => {
+    expect(getScheduledWorkHours('17:00:00', '09:00:00', '2026-05-27')).toBe(0);
   });
 });

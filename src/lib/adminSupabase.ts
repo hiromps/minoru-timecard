@@ -1,5 +1,5 @@
 import { supabase, isDevMode } from './supabase';
-import { calculateWorkTimeAndStatus, applyDirectWorkOverride } from '../utils/workTimeUtils';
+import { calculateWorkTimeAndStatus, applyDirectWorkOverride, getScheduledWorkHours } from '../utils/workTimeUtils';
 import { getJSTMonthRange, localDateTimeToISO } from '../utils/dateUtils';
 import { demoTimeRecordService, demoEmployeeService } from './demoDatabase';
 
@@ -283,6 +283,57 @@ export const correctToAbsence = async (
   }
 };
 
+// 有給として登録（管理者用）。欠勤と異なり出勤・退勤時刻は持たせないが、
+// 給与計算に算入されるよう work_hours に所定労働時間（社員の所定始業〜終業から
+// 昼休憩控除後）を保存する。correct_time_record RPC は対象日を削除→作成するため、
+// 記録の有無を問わず使える。
+export const correctToPaidLeave = async (
+  employee_id: string,
+  record_date: string,
+  reason: string
+): Promise<void> => {
+  try {
+    const { data: employeeData, error: employeeError } = await supabase
+      .from('employees')
+      .select('work_start_time, work_end_time')
+      .eq('employee_id', employee_id)
+      .single();
+
+    if (employeeError) {
+      console.error('Error fetching employee work times:', employeeError);
+      throw new Error('社員の勤務時間情報の取得に失敗しました');
+    }
+
+    const work_hours = getScheduledWorkHours(
+      employeeData.work_start_time,
+      employeeData.work_end_time,
+      record_date
+    );
+
+    const { data: newRecord, error: rpcError } = await supabase.rpc('correct_time_record', {
+      p_employee_id: employee_id,
+      p_record_date: record_date,
+      p_clock_in_time: null,
+      p_clock_out_time: null,
+      p_work_hours: work_hours,
+      p_overtime_minutes: 0,
+      p_status: '有給',
+      p_is_direct_work: false
+    });
+
+    if (rpcError) {
+      console.error('Error registering paid leave (RPC):', rpcError);
+      throw new Error('有給の登録に失敗しました: ' + rpcError.message);
+    }
+
+    await logCorrectionAction(employee_id, record_date, 'INSERT', reason, (newRecord as any)?.id);
+
+  } catch (error) {
+    console.error('Error in correctToPaidLeave:', error);
+    throw error;
+  }
+};
+
 // 打刻記録を更新
 export const updateTimeRecord = async (
   employee_id: string,
@@ -499,9 +550,9 @@ export const recalculateAllStatus = async (): Promise<void> => {
       const employee = employeeMap.get(record.employee_id);
       if (!employee) continue;
 
-      // 欠勤は打刻由来の記録ではない（出勤・退勤とも null）ため、
-      // 通常の再計算ロジックに通すと「通常」に上書きされてしまう。対象外にする。
-      if (record.status === '欠勤') continue;
+      // 欠勤・有給は打刻由来の記録ではない（出勤・退勤とも null）ため、
+      // 通常の再計算ロジックに通すと「通常」・勤務時間0に上書きされてしまう。対象外にする。
+      if (record.status === '欠勤' || record.status === '有給') continue;
 
       // 直行・直帰の記録は遅刻/早退/残業判定を無効化し「通常」扱い・残業0とする
       // （勤務時間は再計算値）。全経路で共通のヘルパーを用いて統一する。

@@ -137,6 +137,7 @@ export type TimeRecordStatus =
   | '遅刻・残業'
   | '設定エラー'
   | '欠勤'
+  | '有給'
 
 export interface TimeRecord {
   id: number

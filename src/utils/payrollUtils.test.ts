@@ -117,6 +117,21 @@ describe('validatePayroll（不備検出）', () => {
     expect(t.openDays).toBe(0);
   });
 
+  it('有給ステータスは打刻漏れエラーにせず、有給日数・所定労働時間として集計する（欠勤と異なり給与に算入）', () => {
+    const report = validatePayroll(
+      [rec({ status: '有給', clock_in_time: null, clock_out_time: null, work_hours: 7 })],
+      [{ employee_id: '001', name: '田中太郎' }],
+      period
+    );
+    expect(report.errorCount).toBe(0);
+    expect(report.warningCount).toBe(0);
+    const t = report.employeeTotals.find((x) => x.employee_id === '001')!;
+    expect(t.paidLeaveDays).toBe(1);
+    expect(t.absenceDays).toBe(0);
+    expect(t.workDays).toBe(0);
+    expect(t.totalWorkHours).toBe(7);
+  });
+
   it('出勤打刻なしをエラー検出', () => {
     const report = validatePayroll(
       [rec({ clock_in_time: null })],

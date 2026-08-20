@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './TimeRecordManagement.css';
-import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, correctToAbsence, updateTimeRecord, getEmployees, TimeRecordWithEmployee, deleteTimeRecord, recalculateAllStatus } from '../lib/adminSupabase';
+import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, correctToAbsence, correctToPaidLeave, updateTimeRecord, getEmployees, TimeRecordWithEmployee, deleteTimeRecord, recalculateAllStatus } from '../lib/adminSupabase';
 import { Employee } from '../lib/supabase';
 import { formatWorkHours } from '../utils/timeUtils';
 import { minutesToHoursDisplay } from '../utils/overtimeCalculator';
@@ -17,6 +17,9 @@ interface CorrectionModalProps {
   loading: boolean;
 }
 
+/** 特別ステータス。'none' は出勤・退勤時刻から自動判定（通常/遅刻/早退/残業等）。 */
+type SpecialStatus = 'none' | '欠勤' | '有給';
+
 interface CorrectionData {
   employee_id: string;
   record_date: string;
@@ -24,7 +27,7 @@ interface CorrectionData {
   clock_out_time: string;
   reason: string;
   action: 'update' | 'delete_and_create';
-  isAbsence: boolean;
+  specialStatus: SpecialStatus;
 }
 
 const CorrectionModal: React.FC<CorrectionModalProps> = ({
@@ -42,7 +45,7 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
     clock_out_time: '',
     reason: '',
     action: 'update',
-    isAbsence: false
+    specialStatus: 'none'
   });
   const isNewRecord = !record;
 
@@ -79,7 +82,7 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
         clock_out_time: getJSTDateTimeLocal(record.clock_out_time),
         reason: '管理者による時刻修正',
         action: 'update',
-        isAbsence: record.status === '欠勤'
+        specialStatus: record.status === '欠勤' || record.status === '有給' ? record.status : 'none'
       });
     } else {
       // 新規追加: 記録が無い社員・日付を後から追加するためのブランクな状態
@@ -90,7 +93,7 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
         clock_out_time: '',
         reason: '',
         action: 'delete_and_create',
-        isAbsence: false
+        specialStatus: 'none'
       });
     }
   }, [record, isOpen]);
@@ -102,8 +105,8 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
     // check_work_hours: 0..24) 違反による不可解な失敗を防ぐ。
     // 特に「削除→作成」経路は非トランザクションのため、INSERT が制約違反で
     // 失敗するとその日の記録が消失する。事前に弾くことでデータ消失を防止する。
-    // 欠勤登録は出勤・退勤を持たないため、この検証自体が対象外。
-    if (!formData.isAbsence && formData.clock_in_time && formData.clock_out_time) {
+    // 欠勤・有給の登録は出勤・退勤を持たないため、この検証自体が対象外。
+    if (formData.specialStatus === 'none' && formData.clock_in_time && formData.clock_out_time) {
       // datetime-local 文字列同士の比較（同一基準で解釈されるため相対比較は安全）
       const cin = new Date(formData.clock_in_time).getTime();
       const cout = new Date(formData.clock_out_time).getTime();
@@ -162,23 +165,24 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
             />
           </div>
 
-          <div className="form-group absence-toggle-group">
-            <label className="absence-toggle-label">
-              <input
-                type="checkbox"
-                checked={formData.isAbsence}
-                onChange={(e) => setFormData(prev => ({
-                  ...prev,
-                  isAbsence: e.target.checked,
-                  clock_in_time: '',
-                  clock_out_time: ''
-                }))}
-              />
-              欠勤として登録（出勤・退勤なし）
-            </label>
+          <div className="form-group">
+            <label>ステータス:</label>
+            <select
+              value={formData.specialStatus}
+              onChange={(e) => setFormData(prev => ({
+                ...prev,
+                specialStatus: e.target.value as SpecialStatus,
+                clock_in_time: '',
+                clock_out_time: ''
+              }))}
+            >
+              <option value="none">通常（出勤・退勤時刻から自動判定）</option>
+              <option value="欠勤">欠勤として登録（出勤・退勤なし・無給）</option>
+              <option value="有給">有給として登録（出勤・退勤なし・所定時間分を給与に算入）</option>
+            </select>
           </div>
 
-          {!formData.isAbsence && (
+          {formData.specialStatus === 'none' && (
             <div className="form-row">
               <div className="form-group">
                 <label>出勤時刻:</label>
@@ -217,7 +221,7 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
             </div>
           )}
 
-          {!formData.isAbsence && !isNewRecord && (
+          {formData.specialStatus === 'none' && !isNewRecord && (
             <div className="form-group">
               <label>修正方法:</label>
               <div className="radio-group">
@@ -349,9 +353,12 @@ const TimeRecordManagement: React.FC = () => {
 
     setLoading(true);
     try {
-      if (data.isAbsence) {
-        // 欠勤として登録（出勤・退勤なし）
+      if (data.specialStatus === '欠勤') {
+        // 欠勤として登録（出勤・退勤なし・無給）
         await correctToAbsence(data.employee_id, data.record_date, data.reason);
+      } else if (data.specialStatus === '有給') {
+        // 有給として登録（出勤・退勤なし・所定時間分を給与に算入）
+        await correctToPaidLeave(data.employee_id, data.record_date, data.reason);
       } else if (data.action === 'delete_and_create') {
         // 削除してから再作成
         await correctTimeRecordByDeleteAndCreate(

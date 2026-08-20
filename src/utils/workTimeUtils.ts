@@ -55,6 +55,27 @@ const overlapBreakMinutes = (
 };
 
 /**
+ * 所定労働時間（時間）を返す。有給休暇など、実打刻が無い日に「その日働いたとみなす」
+ * 時間（＝給与計算の対象時間）を算出するために使う。所定始業〜所定終業から
+ * 所定昼休憩（JST 12:00〜13:00）と重なる分のみ控除する（calculateWorkTimeAndStatus と同じ控除ルール）。
+ * 所定終業 <= 所定始業（設定ミス）の場合は 0 を返す。
+ */
+export const getScheduledWorkHours = (
+  workStartTime: string,
+  workEndTime: string,
+  recordDate: string
+): number => {
+  const workStart = new Date(localDateTimeToISO(`${recordDate}T${toHHMM(workStartTime)}`));
+  const workEnd = new Date(localDateTimeToISO(`${recordDate}T${toHHMM(workEndTime)}`));
+  if (workEnd.getTime() <= workStart.getTime()) return 0;
+
+  const grossMinutes = (workEnd.getTime() - workStart.getTime()) / (1000 * 60);
+  const breakMinutes = overlapBreakMinutes(workStart, workEnd, recordDate);
+  const netMinutes = Math.max(0, grossMinutes - breakMinutes);
+  return Math.round((netMinutes / 60) * 100) / 100;
+};
+
+/**
  * 勤務時間とステータスを計算（打刻・修正・再計算・集計の単一の信頼できる計算関数）
  *
  * 重要（タイムゾーン）:
