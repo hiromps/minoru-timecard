@@ -739,8 +739,10 @@
   width: 90%;
   max-height: calc(100vh - 40px);
   overflow-y: auto;
+  overflow-x: hidden;
   margin: 20px 0;
   position: relative;
+  box-sizing: border-box;
 }
 
 .modal-header {
@@ -775,10 +777,12 @@
 }
 
 /* フォーム */
+/* スクロールは親の .modal-content 側だけが担う。ここでも overflow-y: auto を
+   持たせると入れ子のスクロールコンテナになり、横スクロールバーが二重に
+   表示される不具合の原因になっていた。 */
 .correction-form {
   padding: 20px;
-  max-height: calc(90vh - 120px);
-  overflow-y: auto;
+  box-sizing: border-box;
 }
 
 .form-group {
@@ -810,6 +814,9 @@
   font-family: inherit;
   background: #f7fafc;
   transition: all 0.3s ease;
+  /* width:100% に padding/border が加算されてコンテナ幅をはみ出し、
+     横スクロールバーが出る不具合の原因だったため border-box にする */
+  box-sizing: border-box;
 }
 
 .form-group input:focus,
@@ -871,6 +878,7 @@
 
 .time-input-group input {
   flex: 1;
+  min-width: 0;
 }
 
 .clear-time-btn {
@@ -963,6 +971,7 @@
 
 .time-input-group input {
   flex: 1;
+  min-width: 0;
 }
 
 /* モバイル対応 */
