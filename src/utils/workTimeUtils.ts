@@ -73,6 +73,7 @@ const overlapBreakMinutes = (
  *   - standard: 所定終業を過ぎた分がそのまま残業
  *   - grace_15min: 所定終業後15分までは残業扱いにせず、16分目以降は猶予分(15分)を差し引いて計上
  *   - hourly: 残業は常に0分。所定終業を{@link EXTENDED_HOURS_THRESHOLD_MINUTES}分超えたら isExtendedHours を立てる
+ *   - executive: 残業は常に0分（長時間勤務フラグの記録は行わない）
  * @returns 実労働時間・ステータス・残業時間（分）・長時間勤務フラグ
  */
 export const calculateWorkTimeAndStatus = (
@@ -154,6 +155,9 @@ export const calculateWorkTimeAndStatus = (
     // 長時間勤務フラグを立てる（給与計算はせず記録のみ）。
     overtimeMinutes = 0;
     isExtendedHours = rawOvertimeMinutes > EXTENDED_HOURS_THRESHOLD_MINUTES;
+  } else if (overtimeRuleType === 'executive') {
+    // 役員は残業代を計上しない。長時間勤務フラグの記録も行わない。
+    overtimeMinutes = 0;
   } else {
     overtimeMinutes = rawOvertimeMinutes;
   }

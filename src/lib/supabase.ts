@@ -110,7 +110,8 @@ export { supabase, isDevMode }
 // - standard: 通常（所定終業を過ぎた分がそのまま残業）
 // - grace_15min: 特別猶予（所定終業後15分までは残業扱いにせず、16分目以降は猶予分を差し引いて計上）
 // - hourly: アルバイト（残業代は計上しない。所定終業を大きく超えた場合のみ長時間勤務フラグを立てる）
-export type OvertimeRuleType = 'standard' | 'grace_15min' | 'hourly'
+// - executive: 役員（残業代は計上しない。長時間勤務フラグの記録も行わない）
+export type OvertimeRuleType = 'standard' | 'grace_15min' | 'hourly' | 'executive'
 
 // 型定義
 export interface Employee {

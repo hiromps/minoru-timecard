@@ -444,6 +444,41 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
     });
   });
 
+  describe('残業ルール区分: executive（役員・残業なし。長時間勤務フラグの記録なし）', () => {
+    it('所定終業を過ぎても残業は常に0分・ステータスは通常', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00
+        '2026-05-27T08:30:00.000Z', // JST 17:30（所定+30分）
+        '09:00:00', '17:00:00', '2026-05-27', 'executive'
+      );
+      expect(r.overtimeMinutes).toBe(0);
+      expect(r.status).toBe('通常');
+      expect(r.isExtendedHours).toBe(false);
+    });
+
+    it('所定終業+61分でも長時間勤務フラグは立てない（hourlyと異なり記録しない）', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00
+        '2026-05-27T09:01:00.000Z', // JST 18:01
+        '09:00:00', '17:00:00', '2026-05-27', 'executive'
+      );
+      expect(r.overtimeMinutes).toBe(0);
+      expect(r.status).toBe('通常');
+      expect(r.isExtendedHours).toBe(false);
+    });
+
+    it('遅刻していても残業は付かない（遅刻ステータスのみ）', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:30:00.000Z', // JST 09:30 遅刻
+        '2026-05-27T09:30:00.000Z', // JST 18:30
+        '09:00:00', '17:00:00', '2026-05-27', 'executive'
+      );
+      expect(r.status).toBe('遅刻');
+      expect(r.overtimeMinutes).toBe(0);
+      expect(r.isExtendedHours).toBe(false);
+    });
+  });
+
   describe('残業ルール区分: standard（デフォルト）は従来どおり', () => {
     it('overtimeRuleType省略時はstandardと同じ結果', () => {
       const withDefault = calculateWorkTimeAndStatus(

@@ -19,6 +19,8 @@
 --   * time_records_status_check に '欠勤'（欠勤登録機能）を追加（0009）
 --   * employees.overtime_rule_type / time_records.is_extended_hours を追加（0010）。
 --     残業ルール区分（standard/grace_15min/hourly）を社員マスタで管理する。
+--   * employees.overtime_rule_type に 'executive'（役員）区分を追加（0011）。
+--     残業代は計上しない。hourly と異なり長時間勤務フラグの記録も行わない。
 --
 -- 注意:
 --   * (employee_id, record_date) の UNIQUE 制約は無い（1日1レコードはアプリ側で担保）。
@@ -41,9 +43,9 @@ CREATE TABLE IF NOT EXISTS public.employees (
     is_active       boolean DEFAULT true,
     created_by      uuid,
     updated_by      uuid,
-    overtime_rule_type text NOT NULL DEFAULT 'standard',  -- 残業ルール区分（standard/grace_15min/hourly）
+    overtime_rule_type text NOT NULL DEFAULT 'standard',  -- 残業ルール区分（standard/grace_15min/hourly/executive）
     CONSTRAINT check_overtime_rule_type CHECK (
-        overtime_rule_type = ANY (ARRAY['standard', 'grace_15min', 'hourly'])
+        overtime_rule_type = ANY (ARRAY['standard', 'grace_15min', 'hourly', 'executive'])
     )
 );
 

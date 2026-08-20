@@ -6,7 +6,8 @@ import { employeeService } from '../lib/database';
 const OVERTIME_RULE_LABELS: Record<OvertimeRuleType, string> = {
   standard: '通常',
   grace_15min: '特別猶予（15分）',
-  hourly: 'アルバイト（残業なし）'
+  hourly: 'アルバイト（残業なし）',
+  executive: '役員（残業なし）'
 };
 
 const EmployeeManagement: React.FC = () => {
@@ -312,6 +313,7 @@ const EmployeeManagement: React.FC = () => {
                   <option value="standard">{OVERTIME_RULE_LABELS.standard}</option>
                   <option value="grace_15min">{OVERTIME_RULE_LABELS.grace_15min}</option>
                   <option value="hourly">{OVERTIME_RULE_LABELS.hourly}</option>
+                  <option value="executive">{OVERTIME_RULE_LABELS.executive}</option>
                 </select>
               </div>
 
