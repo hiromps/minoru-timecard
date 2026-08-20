@@ -1,9 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { ClockCircle, ChevronDown, Calendar, Login, Logout, UserAdd, Edit } from 'reicon-react';
 import './TimeClock.css';
 import { Employee, TimeRecord } from '../lib/supabase';
 import { employeeService, timeRecordService } from '../lib/database';
 import { formatWorkHours } from '../utils/timeUtils';
-import { localDateTimeToISO, getJSTDate, getJSTTimeString, getJSTYearMonth } from '../utils/dateUtils';
+import {
+  localDateTimeToISO,
+  getJSTDate,
+  getJSTTimeString,
+  getJSTYearMonth,
+  getJSTTimeParts,
+  getJSTFullDateLabel,
+} from '../utils/dateUtils';
 
 // ステータス→表示用CSSクラス変換（本日の状況・勤務記録の両方で使用）
 const statusToClass = (status: string | null | undefined): string => {
@@ -16,24 +24,36 @@ const statusToClass = (status: string | null | undefined): string => {
   return 'normal';
 };
 
-// ステータス→絵文字付きラベル変換（本日の状況・勤務記録の両方で使用）
+// ステータス→表示ラベル変換（本日の状況・勤務記録の両方で使用）
 const statusToLabel = (status: string | null | undefined): string => {
   switch (status) {
-    case '通常': return '✅ 通常';
-    case '遅刻': return '⚠️ 遅刻';
-    case '早退': return '🏃 早退';
-    case '残業': return '💪 残業';
-    case '遅刻・早退': return '⚠️🏃 遅刻・早退';
-    case '遅刻・残業': return '⚠️💪 遅刻・残業';
-    case '欠勤': return '🤒 欠勤';
+    case '通常': return '通常';
+    case '遅刻': return '遅刻';
+    case '早退': return '早退';
+    case '残業': return '残業';
+    case '遅刻・早退': return '遅刻・早退';
+    case '遅刻・残業': return '遅刻・残業';
+    case '欠勤': return '欠勤';
     default: return status ?? '';
   }
 };
 
+// 本日の状況カード用の表示ステータス（出勤中は退勤前であることを最優先で示す）
+const getTodayDisplayStatus = (record: TimeRecord | null): { label: string; className: string } => {
+  if (!record) return { label: '', className: 'normal' };
+  if (record.clock_in_time && !record.clock_out_time) {
+    return { label: '出勤中', className: 'working' };
+  }
+  return { label: statusToLabel(record.status), className: statusToClass(record.status) };
+};
+
+// 欠勤・休暇理由のクイック選択プリセット
+const ABSENCE_REASON_PRESETS = ['体調不良', '有給休暇', '家庭都合', '慶弔休暇'] as const;
+
 const TimeClock: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
   const [selectedEmployee, setSelectedEmployee] = useState<string>('');
-  const [currentTime, setCurrentTime] = useState<string>('');
+  const [now, setNow] = useState<Date>(new Date());
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [clockType, setClockType] = useState<'in' | 'out'>('in');
   const [employeeRecords, setEmployeeRecords] = useState<TimeRecord[]>([]);
@@ -92,8 +112,10 @@ const TimeClock: React.FC = () => {
       }
     };
     fetchEmployees();
-    updateCurrentTime();
-    const interval = setInterval(updateCurrentTime, 1000);
+
+    const tick = () => setNow(new Date());
+    tick();
+    const interval = setInterval(tick, 1000);
     return () => {
       ignore = true;
       clearInterval(interval);
@@ -110,11 +132,6 @@ const TimeClock: React.FC = () => {
       fetchTodayRecord(selectedEmployee);
     }
   }, [selectedEmployee, showCalendar, fetchEmployeeRecords, fetchTodayRecord]);
-
-  const updateCurrentTime = () => {
-    const now = new Date();
-    setCurrentTime(now.toLocaleString('ja-JP'));
-  };
 
   const handleClockAction = async (type: 'in' | 'out') => {
     if (!selectedEmployee) {
@@ -213,6 +230,16 @@ const TimeClock: React.FC = () => {
     setShowAbsenceModal(true);
   };
 
+  // クイック理由チップ：理由を反映した状態で確認モーダルを開く（即時登録はしない）
+  const handleAbsencePreset = (preset: string) => {
+    if (!selectedEmployee) {
+      alert('社員を選択してください');
+      return;
+    }
+    setAbsenceReason(preset);
+    setShowAbsenceModal(true);
+  };
+
   const confirmAbsenceAction = async () => {
     // 二重送信防止：処理中は何もしない
     if (isSubmitting) return;
@@ -270,111 +297,163 @@ const TimeClock: React.FC = () => {
     });
   };
 
-  const formatDate = (dateString: string | null) => {
+  // 勤務記録一覧用：YYYY/MM/DD（曜）形式（JST基準）
+  const formatDateWithWeekday = (dateString: string | null) => {
     if (!dateString) return '—';
     const d = new Date(dateString);
     if (isNaN(d.getTime())) return '—';
-    return d.toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' });
+    const datePart = d.toLocaleDateString('ja-JP', {
+      year: 'numeric',
+      month: '2-digit',
+      day: '2-digit',
+      timeZone: 'Asia/Tokyo',
+    });
+    const weekday = d.toLocaleDateString('ja-JP', { weekday: 'short', timeZone: 'Asia/Tokyo' });
+    return `${datePart}（${weekday}）`;
   };
+
+  const { hours, minutes, seconds } = getJSTTimeParts(now);
+  const todayDisplayStatus = getTodayDisplayStatus(todayRecord);
 
   return (
     <div className="time-clock">
-      <div className="clock-header-compact">
-        <h2>現在時刻</h2>
-        <div className="current-time-compact">{currentTime}</div>
-      </div>
-
-      <div className="employee-select-compact">
-        <label>社員選択</label>
-        <select 
-          value={selectedEmployee} 
-          onChange={(e) => handleEmployeeChange(e.target.value)}
-        >
-          <option value="">社員を選択してください</option>
-          {employees.map((employee) => (
-            <option key={employee.employee_id} value={employee.employee_id}>
-              {employee.employee_id} - {employee.name}
-            </option>
-          ))}
-        </select>
-      </div>
-
-      {selectedEmployee && todayRecordError && (
-        <div className="today-status-container">
-          <div className="today-status-header">
-            <h3>{selectedEmployeeName}さんの本日の状況</h3>
+      <div className="tc-row tc-row-clock-employee">
+        <div className="clock-header-compact">
+          <div className="card-header-row">
+            <ClockCircle size={18} className="card-header-icon" />
+            <h2>現在時刻</h2>
           </div>
-          <div className="today-status-card">
-            <div style={{ textAlign: 'center', color: '#c0392b', padding: '10px' }}>記録の取得に失敗しました</div>
+          <div className="current-date-compact">{getJSTFullDateLabel(now)}</div>
+          <div className="current-time-split">
+            <span className="time-part"><span className="time-num">{hours}</span><span className="time-unit">時</span></span>
+            <span className="time-part"><span className="time-num">{minutes}</span><span className="time-unit">分</span></span>
+            <span className="time-part"><span className="time-num">{seconds}</span><span className="time-unit">秒</span></span>
           </div>
         </div>
-      )}
 
-      {selectedEmployee && todayRecord && !todayRecordError && (
-        <div className="today-status-container">
-          <div className="today-status-header">
-            <h3>{selectedEmployeeName}さんの本日の状況</h3>
-          </div>
-          <div className="today-status-card">
-            <div className="status-info-row">
-              <div className="status-date">
-                <span className="date-label">本日</span>
-                <span className="date-value">{new Date().toLocaleDateString('ja-JP', { timeZone: 'Asia/Tokyo' })}</span>
-              </div>
-              <div className={`status-badge-today status-${statusToClass(todayRecord.status)}`}>
-                {statusToLabel(todayRecord.status)}
-              </div>
-            </div>
-            <div className="time-info-row">
-              <div className="time-info-item">
-                <span className="time-label-compact">🌅 出勤</span>
-                <span className="time-value-compact">{formatTime(todayRecord.clock_in_time)}</span>
-              </div>
-              <div className="time-info-item">
-                <span className="time-label-compact">🌙 退勤</span>
-                <span className="time-value-compact">{formatTime(todayRecord.clock_out_time)}</span>
-              </div>
-              {todayRecord.work_hours > 0 && (
-                <div className="time-info-item">
-                  <span className="time-label-compact">⏰ 勤務時間</span>
-                  <span className="time-value-compact hours">{formatWorkHours(todayRecord.work_hours)}</span>
-                </div>
-              )}
-            </div>
+        <div className="employee-select-compact">
+          <label>社員選択</label>
+          <div className="select-wrapper">
+            <select
+              value={selectedEmployee}
+              onChange={(e) => handleEmployeeChange(e.target.value)}
+            >
+              <option value="">社員を選択してください</option>
+              {employees.map((employee) => (
+                <option key={employee.employee_id} value={employee.employee_id}>
+                  {employee.employee_id} - {employee.name}
+                </option>
+              ))}
+            </select>
+            <ChevronDown size={18} className="select-chevron" />
           </div>
         </div>
-      )}
+      </div>
 
       {selectedEmployee && (
-        <div className="clock-buttons-top">
-          <button
-            onClick={() => handleClockAction('in')}
-            className="btn btn-clock-in"
-          >
-            出勤
-          </button>
-          <button
-            onClick={() => handleClockAction('out')}
-            className="btn btn-clock-out"
-          >
-            退勤
-          </button>
-          <button
-            onClick={handleAbsenceAction}
-            className="btn btn-absence"
-          >
-            🤒 欠勤
-          </button>
+        <div className="tc-row tc-row-status-buttons-absence">
+          {todayRecordError && (
+            <div className="today-status-container">
+              <div className="today-status-header">
+                <Calendar size={18} className="card-header-icon" />
+                <h3>本日の状況</h3>
+              </div>
+              <div className="today-status-card">
+                <div className="today-status-error">記録の取得に失敗しました</div>
+              </div>
+            </div>
+          )}
+
+          {todayRecord && !todayRecordError && (
+            <div className="today-status-container">
+              <div className="today-status-header">
+                <Calendar size={18} className="card-header-icon" />
+                <h3>本日の状況</h3>
+              </div>
+              <div className="today-status-card">
+                <div className="status-row">
+                  <span className="status-row-label">本日の日付</span>
+                  <span className="status-row-value">{getJSTFullDateLabel(now)}</span>
+                </div>
+                <div className="status-row">
+                  <span className="status-row-label">ステータス</span>
+                  <span className={`status-row-value status-text-${todayDisplayStatus.className}`}>
+                    {todayDisplayStatus.label}
+                  </span>
+                </div>
+                <div className="status-row">
+                  <span className="status-row-label">出勤時間</span>
+                  <span className="status-row-value">{formatTime(todayRecord.clock_in_time)}</span>
+                </div>
+                <div className="status-row">
+                  <span className="status-row-label">退勤時間</span>
+                  <span className="status-row-value">{formatTime(todayRecord.clock_out_time)}</span>
+                </div>
+                {todayRecord.work_hours > 0 && (
+                  <div className="status-row">
+                    <span className="status-row-label">勤務時間</span>
+                    <span className="status-row-value status-row-value-hours">{formatWorkHours(todayRecord.work_hours)}</span>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          <div className="clock-buttons-top">
+            <button
+              onClick={() => handleClockAction('in')}
+              className="btn btn-clock-in"
+              disabled={isSubmitting}
+            >
+              <Login size={22} />
+              <span>出勤</span>
+            </button>
+            <button
+              onClick={() => handleClockAction('out')}
+              className="btn btn-clock-out"
+              disabled={isSubmitting}
+            >
+              <Logout size={22} />
+              <span>退勤</span>
+            </button>
+          </div>
+
+          <div className="absence-card">
+            <div className="card-header-row">
+              <UserAdd size={18} className="card-header-icon" />
+              <h3>休暇・欠勤理由を登録</h3>
+            </div>
+            <p className="absence-card-desc">欠勤や休暇の場合は、理由を選択して登録してください。</p>
+            <div className="absence-reason-chips">
+              {ABSENCE_REASON_PRESETS.map((preset) => (
+                <button
+                  key={preset}
+                  type="button"
+                  className="absence-chip"
+                  onClick={() => handleAbsencePreset(preset)}
+                >
+                  {preset}
+                </button>
+              ))}
+            </div>
+            <button type="button" className="btn-absence-register" onClick={handleAbsenceAction}>
+              <Edit size={18} />
+              <span>休暇・欠勤理由を登録</span>
+            </button>
+          </div>
         </div>
       )}
 
       {selectedEmployee && (
         <div className={`employee-calendar-compact ${!showCalendar ? 'collapsed' : ''}`}>
           <div className="calendar-toggle" onClick={toggleCalendar}>
-            <h3>{currentYearMonth.year}年{currentYearMonth.month}月の勤務記録</h3>
-            <span className={`toggle-icon ${!showCalendar ? 'collapsed' : ''}`}>▼</span>
+            <div className="card-header-row">
+              <Calendar size={18} className="card-header-icon" />
+              <h3>{currentYearMonth.year}年{currentYearMonth.month}月の勤務記録</h3>
+            </div>
+            <ChevronDown size={18} className={`toggle-icon ${!showCalendar ? 'collapsed' : ''}`} />
           </div>
-          
+
           {showCalendar && (
             <div className="records-list-compact">
               {recordsError ? (
@@ -382,32 +461,27 @@ const TimeClock: React.FC = () => {
               ) : employeeRecords.length === 0 ? (
                 <div className="no-records">記録がありません</div>
               ) : (
-                employeeRecords.map((record) => (
-                  <div key={record.id} className="record-item-compact">
-                    <div className="record-header">
-                      <div className="record-date">{formatDate(record.record_date)}</div>
-                      <div className={`record-status status-${statusToClass(record.status)}`}>
-                        {statusToLabel(record.status)}
-                      </div>
+                employeeRecords.map((record) => {
+                  const cls = statusToClass(record.status);
+                  const isAbsence = record.status === '欠勤';
+                  return (
+                    <div key={record.id} className="record-row">
+                      <span className="record-row-date">{formatDateWithWeekday(record.record_date)}</span>
+                      {isAbsence ? (
+                        <span className={`record-row-status status-text-${cls}`}>{statusToLabel(record.status)}</span>
+                      ) : (
+                        <span className="record-row-times">
+                          出勤 {formatTime(record.clock_in_time)} / 退勤 {formatTime(record.clock_out_time)}
+                          {cls !== 'normal' && (
+                            <span className={`record-row-status-inline status-text-${cls}`}>
+                              ・{statusToLabel(record.status)}
+                            </span>
+                          )}
+                        </span>
+                      )}
                     </div>
-                    <div className="record-body">
-                      <div className="record-time-group">
-                        <div className="time-item">
-                          <div className="time-label">🌅 出勤</div>
-                          <div className="time-value">{formatTime(record.clock_in_time)}</div>
-                        </div>
-                        <div className="time-item">
-                          <div className="time-label">🌙 退勤</div>
-                          <div className="time-value">{formatTime(record.clock_out_time)}</div>
-                        </div>
-                      </div>
-                      <div className="record-hours">
-                        <div className="hours-label">⏰ 勤務時間</div>
-                        <div className="hours-value">{record.clock_out_time ? formatWorkHours(record.work_hours) : '—'}</div>
-                      </div>
-                    </div>
-                  </div>
-                ))
+                  );
+                })
               )}
             </div>
           )}
@@ -430,50 +504,50 @@ const TimeClock: React.FC = () => {
                 <strong>{selectedEmployeeName}</strong>さんの<strong>{clockType === 'in' ? '出勤' : '退勤'}</strong>を記録します
               </p>
 
-              <div style={{ margin: '15px 0' }}>
-                <label style={{ display: 'flex', alignItems: 'center', marginBottom: '10px' }}>
+              <div className="modal-field-group">
+                <label className="modal-radio-label">
                   <input
                     type="radio"
                     name="timeMode"
                     checked={!useSpecifiedTime}
                     onChange={() => setUseSpecifiedTime(false)}
-                    style={{ marginRight: '8px' }}
+                    className="modal-check-input"
                   />
-                  現在時刻で打刻: <strong>{currentTime}</strong>
+                  現在時刻で打刻: <strong>{getJSTTimeString(now)}</strong>
                 </label>
 
-                <label style={{ display: 'flex', alignItems: 'center' }}>
+                <label className="modal-radio-label modal-radio-label-last">
                   <input
                     type="radio"
                     name="timeMode"
                     checked={useSpecifiedTime}
                     onChange={() => setUseSpecifiedTime(true)}
-                    style={{ marginRight: '8px' }}
+                    className="modal-check-input"
                   />
                   時刻を指定
                 </label>
               </div>
 
               {useSpecifiedTime && (
-                <div style={{ margin: '15px 0', paddingLeft: '20px' }}>
-                  <div style={{ marginBottom: '10px' }}>
-                    <label style={{ display: 'block', marginBottom: '5px' }}>
+                <div className="modal-field-subgroup">
+                  <div className="modal-field-row">
+                    <label className="modal-field-label">
                       {clockType === 'in' ? '出勤' : '退勤'}時刻:
                     </label>
                     <input
                       type="time"
                       value={specifiedTime}
                       onChange={(e) => setSpecifiedTime(e.target.value)}
-                      style={{ padding: '8px', fontSize: '16px', width: '120px' }}
+                      className="modal-time-input"
                     />
                   </div>
                   <div>
-                    <label style={{ display: 'flex', alignItems: 'center' }}>
+                    <label className="modal-radio-label">
                       <input
                         type="checkbox"
                         checked={isDirectWork}
                         onChange={(e) => setIsDirectWork(e.target.checked)}
-                        style={{ marginRight: '8px' }}
+                        className="modal-check-input"
                       />
                       直行・直帰モード（遅刻・早退判定を無効化）
                     </label>
@@ -511,8 +585,8 @@ const TimeClock: React.FC = () => {
                 <strong>{selectedEmployeeName}</strong>さんの本日を<strong>欠勤</strong>として記録します
               </p>
 
-              <div style={{ margin: '15px 0' }}>
-                <label style={{ display: 'block', marginBottom: '5px' }}>
+              <div className="modal-field-group">
+                <label className="modal-field-label">
                   理由（任意）:
                 </label>
                 <textarea
@@ -520,7 +594,7 @@ const TimeClock: React.FC = () => {
                   onChange={(e) => setAbsenceReason(e.target.value)}
                   placeholder="例: 体調不良のため"
                   rows={3}
-                  style={{ width: '100%', padding: '8px', fontSize: '16px', boxSizing: 'border-box' }}
+                  className="modal-textarea"
                 />
               </div>
             </div>

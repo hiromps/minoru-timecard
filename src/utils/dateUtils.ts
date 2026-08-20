@@ -46,6 +46,33 @@ export const getJSTTimeString = (date: Date = new Date()): string => {
 };
 
 /**
+ * 現在の日本時間での時刻を「時・分・秒」に分割して取得（2桁ゼロ埋め文字列）
+ * ブラウザのタイムゾーンに依存せず、常にJSTの壁時計時刻を返す。
+ * @returns {object} JST基準の { hours, minutes, seconds }
+ */
+export const getJSTTimeParts = (date: Date = new Date()): { hours: string; minutes: string; seconds: string } => {
+  const jst = new Date(date.getTime() + 9 * 60 * 60 * 1000);
+  return {
+    hours: String(jst.getUTCHours()).padStart(2, '0'),
+    minutes: String(jst.getUTCMinutes()).padStart(2, '0'),
+    seconds: String(jst.getUTCSeconds()).padStart(2, '0'),
+  };
+};
+
+/**
+ * 日本時間での日付を「YYYY年M月D日」形式で取得
+ * @returns {string} JST基準の日付ラベル
+ */
+export const getJSTFullDateLabel = (date: Date = new Date()): string => {
+  return date.toLocaleDateString('ja-JP', {
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    timeZone: 'Asia/Tokyo',
+  });
+};
+
+/**
  * 日本時間での年・月を取得（月次データ取得などの基準に使う）
  * getFullYear()/getMonth() のローカルゲッター直接使用は月境界でズレるため禁止。
  * @returns {object} JST基準の { year, month }（month は 1-12）

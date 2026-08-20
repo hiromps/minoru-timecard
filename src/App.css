@@ -1,7 +1,7 @@
 /* アプリ全体のスタイル */
 .App {
   min-height: 100vh;
-  background-color: #ffffff;
+  background-color: #f5f7fa;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', sans-serif;
 }
 
@@ -21,22 +21,27 @@ h1 {
 .app-header {
   background: linear-gradient(135deg, #4a90e2, #357abd);
   color: white;
-  padding: 0.8rem 0;
+  padding: 0.6rem 16px;
   position: sticky;
   top: 0;
   z-index: 100;
   box-shadow: 0 2px 8px rgba(0,0,0,0.15);
   display: flex;
-  justify-content: center;
+  justify-content: space-between;
   align-items: center;
+  gap: 12px;
 }
 
-.header-container {
-  width: 100%;
-  text-align: center;
+.app-header-left {
   display: flex;
-  justify-content: center;
   align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.app-header-icon {
+  color: white;
+  flex-shrink: 0;
 }
 
 .system-title {
@@ -44,13 +49,65 @@ h1 {
   font-size: 1.5rem;
   font-weight: 700;
   color: white;
-  text-align: center;
+  text-align: left;
   letter-spacing: 0.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.app-header-menu-btn {
+  background: none;
+  border: none;
+  color: white;
+  padding: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 6px;
+}
+
+.app-header-menu-btn:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.app-header-menu-panel {
+  position: absolute;
+  top: 100%;
+  right: 12px;
+  margin-top: 8px;
+  background: white;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+  min-width: 160px;
+  z-index: 200;
+}
+
+.app-header-menu-link {
+  display: block;
+  padding: 12px 16px;
+  color: #2c3e50;
+  font-weight: 600;
+  font-size: 14px;
+  text-decoration: none;
+}
+
+.app-header-menu-link:hover {
+  background: #f5f7fa;
+}
+
+@media (min-width: 768px) {
+  .app-header-menu-btn {
+    display: none;
+  }
 }
 
 /* メインコンテンツエリア */
 .app-main {
-  background-color: #ffffff;
+  background-color: #f5f7fa;
   min-height: calc(100vh - 80px);
   padding: 20px 0;
 }
@@ -58,21 +115,20 @@ h1 {
 /* モバイル対応 */
 @media (max-width: 768px) {
   .app-header {
-    padding: 0.3rem 0;
+    padding: 0.5rem 12px;
   }
-  
+
   .system-title {
-    font-size: 0.75rem;
+    font-size: 0.95rem;
     font-weight: 600;
     letter-spacing: 0.1px;
-    white-space: nowrap;
   }
-  
+
   .app-main {
     min-height: calc(100vh - 45px);
     padding: 15px 0;
   }
-  
+
   /* モバイル版でのh1サイズ調整 */
   h1 {
     font-size: 1rem;
@@ -83,21 +139,20 @@ h1 {
 
 @media (max-width: 480px) {
   .app-header {
-    padding: 0.25rem 0;
+    padding: 0.45rem 10px;
   }
-  
+
   .system-title {
-    font-size: 0.65rem;
+    font-size: 0.8rem;
     font-weight: 600;
     letter-spacing: 0px;
-    white-space: nowrap;
   }
-  
+
   .app-main {
     min-height: calc(100vh - 35px);
     padding: 10px 0;
   }
-  
+
   /* スマートフォン版でのh1サイズ調整 */
   h1 {
     font-size: 0.9rem;

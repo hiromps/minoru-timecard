@@ -1,5 +1,6 @@
-import React, { useState, useEffect } from 'react';
-import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { ClockCircle, Menu } from 'reicon-react';
 import TimeClock from './components/TimeClock';
 import AdminLogin from './components/AdminLogin';
 import AdminDashboard from './components/AdminDashboard';
@@ -9,10 +10,42 @@ import './App.css';
 // メインアプリケーションコンポーネント（打刻画面）
 function MainApp() {
   console.log('🏠 メインアプリケーション（打刻画面）表示');
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const handleClickOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) {
+        setMenuOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [menuOpen]);
+
   return (
     <div className="App">
       <header className="app-header">
-        <h1>ミノルタイムカードシステム</h1>
+        <div className="app-header-left">
+          <ClockCircle size={20} className="app-header-icon" />
+          <h1 className="system-title">ミノル タイムカードシステム</h1>
+        </div>
+        <button
+          type="button"
+          className="app-header-menu-btn"
+          aria-label="メニュー"
+          onClick={() => setMenuOpen((v) => !v)}
+        >
+          <Menu size={22} />
+        </button>
+        {menuOpen && (
+          <div className="app-header-menu-panel" ref={menuRef}>
+            <Link to="/admin" className="app-header-menu-link" onClick={() => setMenuOpen(false)}>
+              管理者ログイン
+            </Link>
+          </div>
+        )}
       </header>
 
       <main className="app-main">
