@@ -85,6 +85,10 @@ export const getScheduledWorkHours = (
  *   こうしないと、UTC実行環境(Vercel)で new Date("...日付 17:00") がUTCの17:00と
  *   解釈され、JSTの打刻と9時間ズレて全打刻が誤判定される（過去の不具合）。
  *
+ * 労働時間の起点は全員 所定始業（workStartTime）で統一する。始業前に出勤しても
+ * その分は労働時間・残業に計上しない（例: 所定9:00で8:55出勤しても9:00起点で計算）。
+ * 遅刻判定（isLate）は実際の出勤時刻で行うため、この統一の影響を受けない。
+ *
  * @param clockInTime 出勤時刻 (UTC ISO string)
  * @param clockOutTime 退勤時刻 (UTC ISO string)
  * @param workStartTime 所定始業時刻・JST (例: "09:00:00" または "09:00")
@@ -150,11 +154,14 @@ export const calculateWorkTimeAndStatus = (
     return { actualWorkHours: 0, status: '設定エラー', overtimeMinutes: 0, isExtendedHours: false };
   }
 
-  // 実労働時間の計算（出勤から退勤まで・実打刻ベース）。
+  // 実労働時間の計算（出勤から退勤まで）。
+  // 始業前に出勤しても所定始業（workStart）より前の時間は計上しない
+  // （全員 所定始業 スタートで統一。早出分は労働時間・残業に影響させない）。
   // 所定昼休憩(JST 12:00〜13:00)と重なった分のみ控除する。
   // 午前のみ・午後のみ勤務など休憩を跨がない場合は控除されない。
-  const grossWorkMinutes = (clockOut.getTime() - clockIn.getTime()) / (1000 * 60);
-  const breakMinutes = overlapBreakMinutes(clockIn, clockOut, baseDate);
+  const workMinutesStart = clockIn < workStart ? workStart : clockIn;
+  const grossWorkMinutes = (clockOut.getTime() - workMinutesStart.getTime()) / (1000 * 60);
+  const breakMinutes = overlapBreakMinutes(workMinutesStart, clockOut, baseDate);
   const actualWorkMinutes = Math.max(0, grossWorkMinutes - breakMinutes);
   const actualWorkHours = Math.round((actualWorkMinutes / 60) * 100) / 100;
 

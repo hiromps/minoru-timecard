@@ -178,6 +178,44 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
     });
   });
 
+  describe('始業前の早出は労働時間に計上しない（起点は全員 所定始業 に統一）', () => {
+    it('所定9:00に対し8:55出勤・17:00退勤は、9:00起点で計算（早出5分は計上しない）', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-26T23:55:00.000Z', // JST 08:55
+        '2026-05-27T08:00:00.000Z', // JST 17:00
+        '09:00:00', '17:00:00', '2026-05-27'
+      );
+      expect(r.status).toBe('通常'); // 遅刻ではない（早出のため）
+      expect(r.actualWorkHours).toBe(7); // 9:00-17:00、昼休憩1h控除で7h（8:55を起点にした7.083hにはならない）
+      expect(r.overtimeMinutes).toBe(0);
+    });
+
+    it('早出しても残業時間は所定終業基準のままで変わらない', () => {
+      const early = calculateWorkTimeAndStatus(
+        '2026-05-26T23:30:00.000Z', // JST 08:30 出勤
+        '2026-05-27T10:00:00.000Z', // JST 19:00 退勤
+        '09:00:00', '17:00:00', '2026-05-27'
+      );
+      const onTime = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00 出勤
+        '2026-05-27T10:00:00.000Z', // JST 19:00 退勤
+        '09:00:00', '17:00:00', '2026-05-27'
+      );
+      expect(early.overtimeMinutes).toBe(onTime.overtimeMinutes);
+      expect(early.overtimeMinutes).toBe(120);
+      expect(early.actualWorkHours).toBe(onTime.actualWorkHours);
+    });
+
+    it('始業ちょうどの出勤は早出扱いにならず、起点は出勤時刻のまま', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00 ちょうど
+        '2026-05-27T08:00:00.000Z', // JST 17:00
+        '09:00:00', '17:00:00', '2026-05-27'
+      );
+      expect(r.actualWorkHours).toBe(7);
+    });
+  });
+
   describe('不正データ・設定ミスの検出（設定エラー）', () => {
     it('退勤 <= 出勤（負の勤務時間）は設定エラー', () => {
       const r = calculateWorkTimeAndStatus(
@@ -340,7 +378,7 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
       expect(r.overtimeMinutes).toBe(0);
     });
 
-    it('UTC日跨ぎ（出勤がUTC前日）でも actualWorkHours を正しく計算', () => {
+    it('UTC日跨ぎ（出勤がUTC前日）でも actualWorkHours を正しく計算（起点は所定始業に統一）', () => {
       const r = calculateWorkTimeAndStatus(
         '2026-05-26T23:00:00.000Z', // JST 05-27 08:00（UTCでは前日）
         '2026-05-27T09:00:00.000Z', // JST 05-27 18:00
@@ -348,8 +386,9 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
         '17:00:00',
         '2026-05-27'
       );
-      // gross 10h - 昼休憩1h = 9h。JSTでは同日勤務として扱われる
-      expect(r.actualWorkHours).toBe(9);
+      // 始業前(08:00)出勤分は計上しない。所定始業09:00起点で gross 9h - 昼休憩1h = 8h。
+      // JSTでは同日勤務として扱われる（UTC日跨ぎでも壊れない）。
+      expect(r.actualWorkHours).toBe(8);
       expect(r.status).toBe('残業');
       expect(r.overtimeMinutes).toBe(60);
     });
