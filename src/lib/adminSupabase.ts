@@ -44,34 +44,45 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
   try {
     console.log('🔍 Fetching time records from Supabase...');
 
-    // まず基本的なtime_recordsデータを取得
-    const { data: timeRecordsData, error: timeRecordsError } = await supabase
-      .from('time_records')
-      .select(`
-        id,
-        employee_id,
-        record_date,
-        clock_in_time,
-        clock_out_time,
-        work_hours,
-        overtime_minutes,
-        status,
-        is_direct_work,
-        is_extended_hours,
-        is_manual_entry,
-        approved_by,
-        created_at,
-        updated_at
-      `)
-      .order('record_date', { ascending: false })
-      .order('employee_id');
+    // 全打刻記録を取得。PostgREST は1回のクエリで最大1000件しか返さない
+    // （デフォルトの max_rows）ため、.range() でページングして全件取得する。
+    // これをしないと1000件を超える分（＝古い記録）が管理画面・給与出力から
+    // 静かに欠落する（実際に1414件中1000件しか取得できていなかった不具合があった）。
+    const TIME_RECORDS_PAGE_SIZE = 1000;
+    const timeRecordsData: any[] = [];
+    for (let from = 0; ; from += TIME_RECORDS_PAGE_SIZE) {
+      const { data: page, error: timeRecordsError } = await supabase
+        .from('time_records')
+        .select(`
+          id,
+          employee_id,
+          record_date,
+          clock_in_time,
+          clock_out_time,
+          work_hours,
+          overtime_minutes,
+          status,
+          is_direct_work,
+          is_extended_hours,
+          is_manual_entry,
+          approved_by,
+          created_at,
+          updated_at
+        `)
+        .order('record_date', { ascending: false })
+        .order('employee_id')
+        .range(from, from + TIME_RECORDS_PAGE_SIZE - 1);
 
-    if (timeRecordsError) {
-      console.error('❌ Error fetching time records:', timeRecordsError);
-      throw new Error(`打刻記録の取得に失敗しました: ${timeRecordsError.message}`);
+      if (timeRecordsError) {
+        console.error('❌ Error fetching time records:', timeRecordsError);
+        throw new Error(`打刻記録の取得に失敗しました: ${timeRecordsError.message}`);
+      }
+      if (!page || page.length === 0) break;
+      timeRecordsData.push(...page);
+      if (page.length < TIME_RECORDS_PAGE_SIZE) break;
     }
 
-    console.log('✅ Time records fetched from Supabase:', timeRecordsData?.length || 0);
+    console.log('✅ Time records fetched from Supabase:', timeRecordsData.length);
 
     // 社員データを別途取得
     const { data: employeesData, error: employeesError } = await supabase
@@ -513,14 +524,26 @@ export const recalculateAllStatus = async (): Promise<void> => {
   try {
     console.log('🔄 Recalculating all time record statuses...');
 
-    // 全ての打刻記録を取得（record_date はステータス判定のJST基準日に使用）
-    const { data: records, error: recordsError } = await supabase
-      .from('time_records')
-      .select('id, employee_id, record_date, clock_in_time, clock_out_time, status, is_direct_work');
+    // 全ての打刻記録を取得（record_date はステータス判定のJST基準日に使用）。
+    // PostgREST は1回のクエリで最大1000件しか返さない（デフォルトの max_rows）ため、
+    // .range() でページングして全件取得する。これをしないと1000件を超える分が
+    // 静かに再計算対象から漏れる（実際に1414件中1000件しか更新されない不具合があった）。
+    const PAGE_SIZE = 1000;
+    const records: any[] = [];
+    for (let from = 0; ; from += PAGE_SIZE) {
+      const { data: page, error: recordsError } = await supabase
+        .from('time_records')
+        .select('id, employee_id, record_date, clock_in_time, clock_out_time, status, is_direct_work')
+        .order('id')
+        .range(from, from + PAGE_SIZE - 1);
 
-    if (recordsError) {
-      console.error('Error fetching time records:', recordsError);
-      throw new Error('打刻記録の取得に失敗しました');
+      if (recordsError) {
+        console.error('Error fetching time records:', recordsError);
+        throw new Error('打刻記録の取得に失敗しました');
+      }
+      if (!page || page.length === 0) break;
+      records.push(...page);
+      if (page.length < PAGE_SIZE) break;
     }
 
     // 全ての社員の勤務時間・残業ルール区分を取得
@@ -543,10 +566,12 @@ export const recalculateAllStatus = async (): Promise<void> => {
       });
     });
 
+    console.log(`📄 Fetched ${records.length} time records for recalculation.`);
+
     // 各記録のステータスを再計算
     let updatedCount = 0;
     let failedCount = 0;
-    for (const record of records || []) {
+    for (const record of records) {
       const employee = employeeMap.get(record.employee_id);
       if (!employee) continue;
 
