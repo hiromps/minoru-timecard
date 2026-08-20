@@ -102,11 +102,13 @@ export const employeeService = {
     console.log('🏭 本番モードで社員作成処理')
     console.log('📝 作成データ:', employee)
 
+    // .single()は0行返却時に「Cannot coerce the result to a single JSON object」という
+    // 中身の分からないエラーになる。RLS(admin_employees_write)が管理者セッション無効で
+    // 弾いた場合も0行になるため、配列で受けて原因を切り分けられるようにする。
     const { data, error } = await supabase
       .from('employees')
       .insert(employee)
       .select()
-      .single()
 
     if (error) {
       console.error('❌ 社員作成エラー:', error)
@@ -115,9 +117,12 @@ export const employeeService = {
       // 呼び出し側で「保存に失敗しました」という中身の分からない表示になる
       throw new Error('社員の作成に失敗しました: ' + error.message)
     }
+    if (!data || data.length === 0) {
+      throw new Error('社員の作成が反映されませんでした。管理者セッションが無効になっている可能性があります。再ログインしてください')
+    }
 
-    console.log('✅ 社員作成成功:', data)
-    return data
+    console.log('✅ 社員作成成功:', data[0])
+    return data[0]
   },
 
   // 社員更新
@@ -132,12 +137,14 @@ export const employeeService = {
     console.log('🏭 本番モードで社員更新処理')
     console.log('📝 更新データ:', employee)
 
+    // .single()は0行返却時に「Cannot coerce the result to a single JSON object」という
+    // 中身の分からないエラーになる。RLS(admin_employees_update)が管理者セッション無効で
+    // 弾いた場合も0行になるため、配列で受けて原因を切り分けられるようにする。
     const { data, error } = await supabase
       .from('employees')
       .update(employee)
       .eq('id', id)
       .select()
-      .single()
 
     if (error) {
       console.error('❌ 社員更新エラー:', error)
@@ -146,9 +153,12 @@ export const employeeService = {
       // 呼び出し側で「保存に失敗しました」という中身の分からない表示になる
       throw new Error('社員の更新に失敗しました: ' + error.message)
     }
+    if (!data || data.length === 0) {
+      throw new Error('更新が反映されませんでした。管理者セッションが無効になっている可能性があります。再ログインしてください')
+    }
 
-    console.log('✅ 社員更新成功:', data)
-    return data
+    console.log('✅ 社員更新成功:', data[0])
+    return data[0]
   },
 
   // 社員削除
