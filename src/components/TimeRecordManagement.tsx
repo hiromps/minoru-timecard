@@ -1,12 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import './TimeRecordManagement.css';
 import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, correctToAbsence, correctToPaidLeave, updateTimeRecord, getEmployees, TimeRecordWithEmployee, deleteTimeRecord, recalculateAllStatus } from '../lib/adminSupabase';
-import { Employee } from '../lib/supabase';
+import { Employee, TimeRecordStatus } from '../lib/supabase';
 import { formatWorkHours } from '../utils/timeUtils';
 import { minutesToHoursDisplay } from '../utils/overtimeCalculator';
 import { getJSTDateTimeLocal } from '../utils/dateUtils';
 
 // TimeRecordWithEmployeeを使用するため、ローカル定義は削除
+
+const STATUS_OPTIONS: TimeRecordStatus[] = [
+  '通常', '遅刻', '早退', '残業', '遅刻・早退', '遅刻・残業', '設定エラー', '欠勤', '有給'
+];
 
 interface CorrectionModalProps {
   record: TimeRecordWithEmployee | null;
@@ -283,6 +287,7 @@ const TimeRecordManagement: React.FC = () => {
   const [filters, setFilters] = useState({
     date: '', // 初期値は空にして全ての日付を表示
     employeeId: '',
+    status: '', // 空文字は「すべて」
     showManualOnly: false
   });
 
@@ -327,6 +332,7 @@ const TimeRecordManagement: React.FC = () => {
   const filteredRecords = timeRecords.filter(record => {
     if (filters.date && record.record_date !== filters.date) return false;
     if (filters.employeeId && !record.employee_id.includes(filters.employeeId)) return false;
+    if (filters.status && record.status !== filters.status) return false;
     if (filters.showManualOnly && !record.is_manual_entry) return false;
     return true;
   });
@@ -475,6 +481,18 @@ const TimeRecordManagement: React.FC = () => {
             onChange={(e) => setFilters(prev => ({ ...prev, employeeId: e.target.value }))}
             placeholder="社員ID で検索"
           />
+        </div>
+        <div className="filter-group">
+          <label>ステータス:</label>
+          <select
+            value={filters.status}
+            onChange={(e) => setFilters(prev => ({ ...prev, status: e.target.value }))}
+          >
+            <option value="">すべて</option>
+            {STATUS_OPTIONS.map(status => (
+              <option key={status} value={status}>{status}</option>
+            ))}
+          </select>
         </div>
         <div className="filter-group">
           <label>
