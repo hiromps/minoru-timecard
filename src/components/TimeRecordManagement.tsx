@@ -4,7 +4,7 @@ import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, correctToAbsence
 import { Employee, TimeRecordStatus } from '../lib/supabase';
 import { formatWorkHours } from '../utils/timeUtils';
 import { minutesToHoursDisplay } from '../utils/overtimeCalculator';
-import { getJSTDateTimeLocal } from '../utils/dateUtils';
+import { getJSTDateTimeLocal, getJSTMonthRange } from '../utils/dateUtils';
 
 // TimeRecordWithEmployeeを使用するため、ローカル定義は削除
 
@@ -284,6 +284,8 @@ const TimeRecordManagement: React.FC = () => {
     isOpen: false,
     record: null as TimeRecordWithEmployee | null
   });
+  // ステータス再計算の対象月（"YYYY-MM"）。空なら全期間が対象。
+  const [recalcMonth, setRecalcMonth] = useState('');
   const [filters, setFilters] = useState({
     date: '', // 初期値は空にして全ての日付を表示
     employeeId: '',
@@ -415,16 +417,22 @@ const TimeRecordManagement: React.FC = () => {
     }
   };
 
-  // ステータス再計算処理
+  // ステータス再計算処理。recalcMonth（"YYYY-MM"）が指定されていればその月のみ、
+  // 空なら全期間を対象にする。
   const handleRecalculateStatus = async () => {
-    if (!window.confirm('全ての打刻記録のステータスを各社員の勤務時間に基づいて再計算します。\n\nこの処理には時間がかかる場合があります。実行しますか？')) {
+    const range = recalcMonth
+      ? getJSTMonthRange(Number(recalcMonth.split('-')[0]), Number(recalcMonth.split('-')[1]))
+      : null;
+    const scopeLabel = range ? `${recalcMonth.replace('-', '年')}月分（${range.startDate}〜${range.endDate}）` : '全期間';
+
+    if (!window.confirm(`${scopeLabel}の打刻記録のステータスを各社員の勤務時間に基づいて再計算します。\n\nこの処理には時間がかかる場合があります。実行しますか？`)) {
       return;
     }
 
     setLoading(true);
     try {
-      await recalculateAllStatus();
-      alert('ステータスの再計算が完了しました');
+      await recalculateAllStatus(range ? { startDate: range.startDate, endDate: range.endDate } : undefined);
+      alert(`${scopeLabel}のステータス再計算が完了しました`);
       await fetchTimeRecords(); // データを再取得
     } catch (error: any) {
       console.error('Error recalculating status:', error);
@@ -455,9 +463,19 @@ const TimeRecordManagement: React.FC = () => {
           >
             ＋ 新規追加
           </button>
-          <button onClick={handleRecalculateStatus} disabled={loading} className="recalculate-btn">
-            {loading ? '処理中...' : 'ステータス再計算'}
-          </button>
+          <div className="recalculate-group">
+            <input
+              type="month"
+              value={recalcMonth}
+              onChange={(e) => setRecalcMonth(e.target.value)}
+              disabled={loading}
+              title="再計算する月を指定（空欄なら全期間）"
+              className="recalculate-month-input"
+            />
+            <button onClick={handleRecalculateStatus} disabled={loading} className="recalculate-btn">
+              {loading ? '処理中...' : recalcMonth ? `${recalcMonth}分を再計算` : 'ステータス再計算（全期間）'}
+            </button>
+          </div>
           <button onClick={() => fetchTimeRecords()} disabled={loading} className="refresh-btn">
             {loading ? '読込中...' : '更新'}
           </button>

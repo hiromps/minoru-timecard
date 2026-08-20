@@ -519,23 +519,30 @@ export const getEmployees = async () => {
   }
 };
 
-// 全打刻記録のステータスを再計算
-export const recalculateAllStatus = async (): Promise<void> => {
+// 全打刻記録のステータスを再計算。startDate/endDate（JST record_date, 'YYYY-MM-DD'）を
+// 指定すると、その期間（両端含む）のみを対象にする。未指定なら全期間が対象。
+export const recalculateAllStatus = async (options?: {
+  startDate?: string;
+  endDate?: string;
+}): Promise<void> => {
   try {
-    console.log('🔄 Recalculating all time record statuses...');
+    const { startDate, endDate } = options || {};
+    console.log('🔄 Recalculating time record statuses...', { startDate, endDate });
 
-    // 全ての打刻記録を取得（record_date はステータス判定のJST基準日に使用）。
+    // 対象の打刻記録を取得（record_date はステータス判定のJST基準日に使用）。
     // PostgREST は1回のクエリで最大1000件しか返さない（デフォルトの max_rows）ため、
     // .range() でページングして全件取得する。これをしないと1000件を超える分が
     // 静かに再計算対象から漏れる（実際に1414件中1000件しか更新されない不具合があった）。
     const PAGE_SIZE = 1000;
     const records: any[] = [];
     for (let from = 0; ; from += PAGE_SIZE) {
-      const { data: page, error: recordsError } = await supabase
+      let query = supabase
         .from('time_records')
         .select('id, employee_id, record_date, clock_in_time, clock_out_time, status, is_direct_work')
-        .order('id')
-        .range(from, from + PAGE_SIZE - 1);
+        .order('id');
+      if (startDate) query = query.gte('record_date', startDate);
+      if (endDate) query = query.lte('record_date', endDate);
+      const { data: page, error: recordsError } = await query.range(from, from + PAGE_SIZE - 1);
 
       if (recordsError) {
         console.error('Error fetching time records:', recordsError);

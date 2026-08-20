@@ -129,6 +129,31 @@
   box-shadow: 0 2px 8px rgba(156, 163, 175, 0.3);
 }
 
+.recalculate-group {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.recalculate-month-input {
+  padding: 10px 12px;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 13px;
+  background: #f7fafc;
+  color: #2d3748;
+  font-weight: 500;
+}
+
+@media (min-width: 640px) {
+  .recalculate-month-input {
+    padding: 12px 16px;
+    border-radius: 12px;
+    font-size: 14px;
+  }
+}
+
 .refresh-btn::before {
   content: '🔄';
   font-size: 16px;
