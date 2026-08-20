@@ -262,12 +262,12 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
 
   describe('applyDirectWorkOverride（直行直帰）', () => {
     it('直行直帰でない場合は結果をそのまま返す', () => {
-      const r = { actualWorkHours: 7, status: '遅刻' as const, overtimeMinutes: 30 };
+      const r = { actualWorkHours: 7, status: '遅刻' as const, overtimeMinutes: 30, isExtendedHours: false };
       expect(applyDirectWorkOverride(r, false)).toEqual(r);
     });
 
     it('直行直帰なら遅刻を通常に、残業を0にする（労働時間は維持）', () => {
-      const r = { actualWorkHours: 7, status: '遅刻・残業' as const, overtimeMinutes: 30 };
+      const r = { actualWorkHours: 7, status: '遅刻・残業' as const, overtimeMinutes: 30, isExtendedHours: false };
       const out = applyDirectWorkOverride(r, true);
       expect(out.status).toBe('通常');
       expect(out.overtimeMinutes).toBe(0);
@@ -275,7 +275,7 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
     });
 
     it('直行直帰でも「設定エラー」はそのまま表面化させる', () => {
-      const r = { actualWorkHours: 0, status: '設定エラー' as const, overtimeMinutes: 0 };
+      const r = { actualWorkHours: 0, status: '設定エラー' as const, overtimeMinutes: 0, isExtendedHours: false };
       expect(applyDirectWorkOverride(r, true).status).toBe('設定エラー');
     });
 
@@ -352,6 +352,113 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
       expect(r.actualWorkHours).toBe(9);
       expect(r.status).toBe('残業');
       expect(r.overtimeMinutes).toBe(60);
+    });
+  });
+
+  describe('残業ルール区分: grace_15min（特別猶予15分）', () => {
+    it('所定終業+15分ちょうどは残業扱いにせず通常', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00
+        '2026-05-27T08:15:00.000Z', // JST 17:15
+        '09:00:00', '17:00:00', '2026-05-27', 'grace_15min'
+      );
+      expect(r.overtimeMinutes).toBe(0);
+      expect(r.status).toBe('通常');
+    });
+
+    it('所定終業+16分は猶予15分を差し引いた1分だけ残業', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00
+        '2026-05-27T08:16:00.000Z', // JST 17:16
+        '09:00:00', '17:00:00', '2026-05-27', 'grace_15min'
+      );
+      expect(r.overtimeMinutes).toBe(1);
+      expect(r.status).toBe('残業');
+    });
+
+    it('19:00退勤（所定終業+2時間）は猶予15分を差し引いた1時間45分', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00
+        '2026-05-27T10:00:00.000Z', // JST 19:00
+        '09:00:00', '17:00:00', '2026-05-27', 'grace_15min'
+      );
+      expect(r.overtimeMinutes).toBe(105); // 1時間45分
+      expect(r.status).toBe('残業');
+      expect(r.isExtendedHours).toBe(false);
+    });
+
+    it('遅刻かつ猶予超えの残業は遅刻・残業（猶予差引後の分数で判定）', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:30:00.000Z', // JST 09:30 遅刻
+        '2026-05-27T10:00:00.000Z', // JST 19:00
+        '09:00:00', '17:00:00', '2026-05-27', 'grace_15min'
+      );
+      expect(r.status).toBe('遅刻・残業');
+      expect(r.overtimeMinutes).toBe(105);
+    });
+  });
+
+  describe('残業ルール区分: hourly（アルバイト・残業なし）', () => {
+    it('所定終業を過ぎても残業は常に0分・ステータスは通常', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00
+        '2026-05-27T08:30:00.000Z', // JST 17:30（所定+30分）
+        '09:00:00', '17:00:00', '2026-05-27', 'hourly'
+      );
+      expect(r.overtimeMinutes).toBe(0);
+      expect(r.status).toBe('通常');
+      expect(r.isExtendedHours).toBe(false);
+    });
+
+    it('所定終業+60分ちょうどは長時間勤務フラグを立てない', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00
+        '2026-05-27T09:00:00.000Z', // JST 18:00
+        '09:00:00', '17:00:00', '2026-05-27', 'hourly'
+      );
+      expect(r.overtimeMinutes).toBe(0);
+      expect(r.status).toBe('通常');
+      expect(r.isExtendedHours).toBe(false);
+    });
+
+    it('所定終業+61分は長時間勤務フラグを立てるが残業は0分のまま', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z', // JST 09:00
+        '2026-05-27T09:01:00.000Z', // JST 18:01
+        '09:00:00', '17:00:00', '2026-05-27', 'hourly'
+      );
+      expect(r.overtimeMinutes).toBe(0);
+      expect(r.status).toBe('通常');
+      expect(r.isExtendedHours).toBe(true);
+    });
+
+    it('遅刻していても残業は付かない（遅刻ステータスのみ）', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T00:30:00.000Z', // JST 09:30 遅刻
+        '2026-05-27T09:30:00.000Z', // JST 18:30
+        '09:00:00', '17:00:00', '2026-05-27', 'hourly'
+      );
+      expect(r.status).toBe('遅刻');
+      expect(r.overtimeMinutes).toBe(0);
+      expect(r.isExtendedHours).toBe(true);
+    });
+  });
+
+  describe('残業ルール区分: standard（デフォルト）は従来どおり', () => {
+    it('overtimeRuleType省略時はstandardと同じ結果', () => {
+      const withDefault = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z',
+        '2026-05-27T10:00:00.000Z', // JST 19:00
+        '09:00:00', '17:00:00', '2026-05-27'
+      );
+      const explicit = calculateWorkTimeAndStatus(
+        '2026-05-27T00:00:00.000Z',
+        '2026-05-27T10:00:00.000Z',
+        '09:00:00', '17:00:00', '2026-05-27', 'standard'
+      );
+      expect(withDefault).toEqual(explicit);
+      expect(withDefault.overtimeMinutes).toBe(120);
+      expect(withDefault.isExtendedHours).toBe(false);
     });
   });
 });

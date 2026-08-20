@@ -59,6 +59,7 @@ auth.users ──(id)── admin_profiles            │ 監査トリガー / �
 | `department` | text | NULL | — | 部署 |
 | `work_start_time` | text（推定。time の可能性あり） | NOT NULL | `'09:00'`（推定） | 所定始業（JST "HH:MM"） |
 | `work_end_time` | text（推定。time の可能性あり） | NOT NULL | `'17:00'`（推定） | 所定終業（JST "HH:MM"） |
+| `overtime_rule_type` | text | NOT NULL | `'standard'` | 残業ルール区分。`'standard'`\|`'grace_15min'`\|`'hourly'`（`check_overtime_rule_type`、0010で追加）。詳細は[ステータス列挙](#ステータス列挙と判定ロジック)の補足を参照 |
 | `created_at` | timestamptz | NOT NULL | `now()` | 作成日時 |
 | `updated_at` | timestamptz | NOT NULL | `now()` | 更新日時（トリガーで自動更新・推定） |
 
@@ -95,6 +96,7 @@ auth.users ──(id)── admin_profiles            │ 監査トリガー / �
 | `work_hours` | numeric | NOT NULL（推定） | `0`（推定） | 実労働時間（時間）。昼休憩控除後 |
 | `overtime_minutes` | integer | **NOT NULL** | **`0`** | 残業（分）。`add-overtime-minutes.sql` で追加 |
 | `is_direct_work` | boolean | NOT NULL（推定） | `false`（推定） | 直行直帰。true で遅刻/早退/残業判定を無効化 |
+| `is_extended_hours` | boolean | NOT NULL | `false` | `overtime_rule_type='hourly'`の社員が所定終業を60分超えて勤務した場合のフラグ（0010で追加）。残業代（`overtime_minutes`）とは無関係で記録のみ |
 | `is_manual_entry` | boolean（推定） | 推定 | `false`（推定） | 手動入力フラグ。`getAllTimeRecords` が参照 |
 | `approved_by` | text または uuid（推定） | NULL | — | 承認者。`getAllTimeRecords` が参照 |
 | `notes` | text（推定） | NULL | — | **`admin_create_time_record` RPC のみが参照**。実在は要確認 |
@@ -224,6 +226,11 @@ Supabase Auth（`auth.users`）と連携する管理者情報。`id` = `auth.uid
 - **残業の基準統一**: 残業ステータスは「丸め後の残業分 > 0」を唯一の基準とする（終業 +1〜29 秒で「残業ステータスなのに残業 0 分」という矛盾を防ぐ）。
 - **直行直帰（`is_direct_work=true`）**: 遅刻/早退/残業判定を無効化。出勤時ステータスを維持し残業は 0。ただし `work_hours` は実打刻から計上。再計算（`recalculateAllStatus`）でも同様に上書きしない。
 - **優先順位**: `遅刻・早退` → `遅刻・残業` → `遅刻` → `早退` → `残業` → `通常`（早退と残業は排他。早退が優先）。
+- **残業ルール区分（`employees.overtime_rule_type`、0010で追加）**: `overtime_minutes`の算出方法を社員ごとに切り替える。
+  - `standard`（既定）: 所定終業を過ぎた分がそのまま残業。
+  - `grace_15min`: 所定終業後15分までは残業扱いにせず（ステータスも`通常`のまま）、16分目以降は猶予15分を差し引いた分を残業として計上する（例: 所定終業+2時間なら 120-15=105分）。押川彰宏・六條 直樹に適用。
+  - `hourly`（アルバイト）: `overtime_minutes`は常に0。所定終業を60分超えたら`time_records.is_extended_hours`のみ立てる（給与計算には影響しない）。
+  - 実装は `src/utils/workTimeUtils.ts` の `calculateWorkTimeAndStatus`（`overtimeRuleType`引数）に一本化。
 
 > 集計での使い方（`getMonthlySummary`）: 遅刻回数は `status` に `'遅刻'` を含む行数、早退回数は `'早退'` を含む行数でカウント（複合ステータスも計上される）。
 

@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import './EmployeeManagement.css';
-import { Employee } from '../lib/supabase';
+import { Employee, OvertimeRuleType } from '../lib/supabase';
 import { employeeService } from '../lib/database';
+
+const OVERTIME_RULE_LABELS: Record<OvertimeRuleType, string> = {
+  standard: '通常',
+  grace_15min: '特別猶予（15分）',
+  hourly: 'アルバイト（残業なし）'
+};
 
 const EmployeeManagement: React.FC = () => {
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -14,7 +20,8 @@ const EmployeeManagement: React.FC = () => {
     name: '',
     department: '',
     work_start_time: '09:00:00',
-    work_end_time: '17:00:00'
+    work_end_time: '17:00:00',
+    overtime_rule_type: 'standard'
   });
 
   useEffect(() => {
@@ -92,7 +99,8 @@ const EmployeeManagement: React.FC = () => {
       name: employee.name,
       department: employee.department || '',
       work_start_time: employee.work_start_time,
-      work_end_time: employee.work_end_time
+      work_end_time: employee.work_end_time,
+      overtime_rule_type: employee.overtime_rule_type || 'standard'
     });
     setShowModal(true);
   };
@@ -117,7 +125,8 @@ const EmployeeManagement: React.FC = () => {
       name: '',
       department: '',
       work_start_time: '09:00:00',
-      work_end_time: '17:00:00'
+      work_end_time: '17:00:00',
+      overtime_rule_type: 'standard'
     });
     setShowModal(true);
   };
@@ -171,6 +180,7 @@ const EmployeeManagement: React.FC = () => {
               <th>氏名</th>
               <th>部署</th>
               <th>勤務時間</th>
+              <th>残業ルール</th>
               <th>操作</th>
             </tr>
           </thead>
@@ -182,6 +192,9 @@ const EmployeeManagement: React.FC = () => {
                 <td data-label="部署">{employee.department || '-'}</td>
                 <td data-label="勤務時間">
                   {formatTime(employee.work_start_time)} - {formatTime(employee.work_end_time)}
+                </td>
+                <td data-label="残業ルール">
+                  {OVERTIME_RULE_LABELS[employee.overtime_rule_type || 'standard']}
                 </td>
                 <td data-label="操作">
                   <div className="action-buttons">
@@ -203,7 +216,7 @@ const EmployeeManagement: React.FC = () => {
             ))}
             {employees.length === 0 && (
               <tr>
-                <td colSpan={5} className="no-data">
+                <td colSpan={6} className="no-data">
                   {fetchError ? '社員データの取得に失敗しました' : '社員データがありません'}
                 </td>
               </tr>
@@ -284,6 +297,22 @@ const EmployeeManagement: React.FC = () => {
                   }))}
                   required
                 />
+              </div>
+
+              <div className="form-group">
+                <label>残業ルール:</label>
+                <select
+                  name="overtime_rule_type"
+                  value={formData.overtime_rule_type || 'standard'}
+                  onChange={(e) => setFormData(prev => ({
+                    ...prev,
+                    overtime_rule_type: e.target.value as OvertimeRuleType
+                  }))}
+                >
+                  <option value="standard">{OVERTIME_RULE_LABELS.standard}</option>
+                  <option value="grace_15min">{OVERTIME_RULE_LABELS.grace_15min}</option>
+                  <option value="hourly">{OVERTIME_RULE_LABELS.hourly}</option>
+                </select>
               </div>
 
               <div className="form-actions">

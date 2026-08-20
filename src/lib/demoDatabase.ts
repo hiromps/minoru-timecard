@@ -18,6 +18,7 @@ export const demoEmployeeService = {
       department: employee.department,
       work_start_time: employee.work_start_time,
       work_end_time: employee.work_end_time,
+      overtime_rule_type: employee.overtime_rule_type,
       created_at: new Date().toISOString(),
       updated_at: new Date().toISOString()
     }
@@ -37,6 +38,7 @@ export const demoEmployeeService = {
       ...(employee.department !== undefined && { department: employee.department }),
       ...(employee.work_start_time !== undefined && { work_start_time: employee.work_start_time }),
       ...(employee.work_end_time !== undefined && { work_end_time: employee.work_end_time }),
+      ...(employee.overtime_rule_type !== undefined && { overtime_rule_type: employee.overtime_rule_type }),
       updated_at: new Date().toISOString()
     }
 
@@ -83,7 +85,8 @@ export const demoTimeRecordService = {
       null,
       employee.work_start_time,
       employee.work_end_time,
-      today
+      today,
+      employee.overtime_rule_type
     )
 
     const newRecord: TimeRecord = {
@@ -132,13 +135,14 @@ export const demoTimeRecordService = {
 
     // 勤務時間・ステータス・残業時間を計算（統一関数を使用・DBの勤務時間基準）。
     // 出勤時に保存された直行直帰フラグを本番経路と同様に適用する。
-    const { actualWorkHours, status, overtimeMinutes } = applyDirectWorkOverride(
+    const { actualWorkHours, status, overtimeMinutes, isExtendedHours } = applyDirectWorkOverride(
       calculateWorkTimeAndStatus(
         mockTimeRecords[existingIndex].clock_in_time,
         now,
         employee.work_start_time,
         employee.work_end_time,
-        today
+        today,
+        employee.overtime_rule_type
       ),
       mockTimeRecords[existingIndex].is_direct_work === true
     )
@@ -149,6 +153,7 @@ export const demoTimeRecordService = {
       work_hours: actualWorkHours,
       status,
       overtime_minutes: overtimeMinutes,
+      is_extended_hours: isExtendedHours,
       updated_at: now
     }
 
@@ -216,7 +221,8 @@ export const demoTimeRecordService = {
         null,
         employee.work_start_time,
         employee.work_end_time,
-        today
+        today,
+        employee.overtime_rule_type
       ).status
     }
 
@@ -270,13 +276,14 @@ export const demoTimeRecordService = {
     // 勤務時間・ステータス・残業は統一関数 + applyDirectWorkOverride で
     // 本番経路（database.ts）・管理者再計算と同一の結果にする。
     const directWork = isDirectWork || mockTimeRecords[existingIndex].is_direct_work === true
-    const { actualWorkHours, status, overtimeMinutes } = applyDirectWorkOverride(
+    const { actualWorkHours, status, overtimeMinutes, isExtendedHours } = applyDirectWorkOverride(
       calculateWorkTimeAndStatus(
         mockTimeRecords[existingIndex].clock_in_time,
         specifiedTime,
         employee.work_start_time,
         employee.work_end_time,
-        today
+        today,
+        employee.overtime_rule_type
       ),
       directWork
     )
@@ -288,6 +295,7 @@ export const demoTimeRecordService = {
       status,
       overtime_minutes: overtimeMinutes,
       is_direct_work: directWork,
+      is_extended_hours: isExtendedHours,
       updated_at: new Date().toISOString()
     }
 

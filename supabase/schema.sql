@@ -17,6 +17,8 @@
 --
 -- 2026-08-20 に以下を本番へ適用済み（本ファイルも反映）:
 --   * time_records_status_check に '欠勤'（欠勤登録機能）を追加（0009）
+--   * employees.overtime_rule_type / time_records.is_extended_hours を追加（0010）。
+--     残業ルール区分（standard/grace_15min/hourly）を社員マスタで管理する。
 --
 -- 注意:
 --   * (employee_id, record_date) の UNIQUE 制約は無い（1日1レコードはアプリ側で担保）。
@@ -38,7 +40,11 @@ CREATE TABLE IF NOT EXISTS public.employees (
     updated_at      timestamptz DEFAULT now(),
     is_active       boolean DEFAULT true,
     created_by      uuid,
-    updated_by      uuid
+    updated_by      uuid,
+    overtime_rule_type text NOT NULL DEFAULT 'standard',  -- 残業ルール区分（standard/grace_15min/hourly）
+    CONSTRAINT check_overtime_rule_type CHECK (
+        overtime_rule_type = ANY (ARRAY['standard', 'grace_15min', 'hourly'])
+    )
 );
 
 -- 打刻記録
@@ -56,8 +62,9 @@ CREATE TABLE IF NOT EXISTS public.time_records (
     user_agent       text,
     is_manual_entry  boolean DEFAULT false,
     approved_by      uuid,
-    overtime_minutes integer NOT NULL DEFAULT 0,          -- 残業（分）= 退勤 - 所定終業、0以上
+    overtime_minutes integer NOT NULL DEFAULT 0,          -- 残業（分）= 退勤 - 所定終業、0以上（残業ルール区分により調整後）
     is_direct_work   boolean NOT NULL DEFAULT false,      -- 直行・直帰（遅刻/早退/残業判定を無効化）
+    is_extended_hours boolean NOT NULL DEFAULT false,     -- アルバイト(hourly)の長時間勤務フラグ。残業代とは無関係
     CONSTRAINT time_records_status_check CHECK (
         status = ANY (ARRAY['通常','遅刻','早退','残業','遅刻・早退','遅刻・残業','設定エラー','欠勤'])
     ),

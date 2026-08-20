@@ -106,6 +106,12 @@ if (isDevMode) {
 
 export { supabase, isDevMode }
 
+// 残業ルール区分:
+// - standard: 通常（所定終業を過ぎた分がそのまま残業）
+// - grace_15min: 特別猶予（所定終業後15分までは残業扱いにせず、16分目以降は猶予分を差し引いて計上）
+// - hourly: アルバイト（残業代は計上しない。所定終業を大きく超えた場合のみ長時間勤務フラグを立てる）
+export type OvertimeRuleType = 'standard' | 'grace_15min' | 'hourly'
+
 // 型定義
 export interface Employee {
   id: number
@@ -114,6 +120,8 @@ export interface Employee {
   department: string | null
   work_start_time: string
   work_end_time: string
+  /** 残業ルール区分。未設定（既存データ）は standard 扱い */
+  overtime_rule_type?: OvertimeRuleType
   created_at: string
   updated_at: string
 }
@@ -140,6 +148,8 @@ export interface TimeRecord {
   overtime_minutes: number
   /** 直行・直帰モードで打刻された記録か。true なら遅刻/早退/残業判定を無効化。 */
   is_direct_work?: boolean
+  /** アルバイト(hourly)が所定終業を大きく超えて勤務した場合の長時間勤務フラグ。残業代とは無関係。 */
+  is_extended_hours?: boolean
   created_at: string
   updated_at: string
 }

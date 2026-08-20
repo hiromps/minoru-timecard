@@ -514,6 +514,11 @@ const TimeRecordManagement: React.FC = () => {
                   <span className={`status ${record.status}`}>
                     {record.status}
                   </span>
+                  {record.is_extended_hours && (
+                    <span className="extended-hours-badge" title="所定終業を大きく超えて勤務しています">
+                      ⏱長時間
+                    </span>
+                  )}
                 </td>
                 <td data-label="入力種別">
                   {record.is_manual_entry ? (

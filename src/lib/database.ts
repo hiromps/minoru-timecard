@@ -231,7 +231,8 @@ export const timeRecordService = {
       null,
       employee.work_start_time,
       employee.work_end_time,
-      today
+      today,
+      employee.overtime_rule_type
     )
 
     console.log('📝 出勤データ挿入開始:', {
@@ -306,13 +307,14 @@ export const timeRecordService = {
 
     // 勤務時間・ステータス・残業時間を計算（統一関数を使用・DBの勤務時間基準）。
     // 出勤時に保存された直行直帰フラグを全経路と同様に適用する。
-    const { actualWorkHours: workHours, status: finalStatus, overtimeMinutes } = applyDirectWorkOverride(
+    const { actualWorkHours: workHours, status: finalStatus, overtimeMinutes, isExtendedHours } = applyDirectWorkOverride(
       calculateWorkTimeAndStatus(
         todayRecord.clock_in_time,
         currentTime,
         employee.work_start_time,
         employee.work_end_time,
-        todayRecord.record_date
+        todayRecord.record_date,
+        employee.overtime_rule_type
       ),
       todayRecord.is_direct_work === true
     )
@@ -322,7 +324,8 @@ export const timeRecordService = {
       clock_out_time: currentTime,
       work_hours: workHours,
       status: finalStatus,
-      overtime_minutes: overtimeMinutes
+      overtime_minutes: overtimeMinutes,
+      is_extended_hours: isExtendedHours
     })
 
     const { data, error } = await supabase
@@ -331,7 +334,8 @@ export const timeRecordService = {
         clock_out_time: currentTime,
         work_hours: workHours,
         status: finalStatus,
-        overtime_minutes: overtimeMinutes
+        overtime_minutes: overtimeMinutes,
+        is_extended_hours: isExtendedHours
       })
       .eq('id', todayRecord.id)
       .select()
@@ -462,7 +466,8 @@ export const timeRecordService = {
         null,
         employee.work_start_time,
         employee.work_end_time,
-        today
+        today,
+        employee.overtime_rule_type
       ).status
     }
 
@@ -539,13 +544,14 @@ export const timeRecordService = {
     // 勤務時間・ステータス・残業時間は統一関数で計算し、直行直帰の扱いも
     // 全経路共通の applyDirectWorkOverride で統一する（管理者再計算と同一結果）。
     const directWork = isDirectWork || todayRecord.is_direct_work === true
-    const { actualWorkHours: workHours, status: finalStatus, overtimeMinutes } = applyDirectWorkOverride(
+    const { actualWorkHours: workHours, status: finalStatus, overtimeMinutes, isExtendedHours } = applyDirectWorkOverride(
       calculateWorkTimeAndStatus(
         todayRecord.clock_in_time,
         specifiedTime,
         employee.work_start_time,
         employee.work_end_time,
-        todayRecord.record_date
+        todayRecord.record_date,
+        employee.overtime_rule_type
       ),
       directWork
     )
@@ -556,7 +562,8 @@ export const timeRecordService = {
       work_hours: workHours,
       status: finalStatus,
       overtime_minutes: overtimeMinutes,
-      is_direct_work: directWork
+      is_direct_work: directWork,
+      is_extended_hours: isExtendedHours
     })
 
     const { data, error } = await supabase
@@ -566,7 +573,8 @@ export const timeRecordService = {
         work_hours: workHours,
         status: finalStatus,
         overtime_minutes: overtimeMinutes,
-        is_direct_work: directWork
+        is_direct_work: directWork,
+        is_extended_hours: isExtendedHours
       })
       .eq('id', todayRecord.id)
       .select()

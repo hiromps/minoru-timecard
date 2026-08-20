@@ -14,6 +14,7 @@ export interface TimeRecordWithEmployee {
   overtime_minutes: number;
   status: string;
   is_direct_work?: boolean;
+  is_extended_hours?: boolean;
   is_manual_entry: boolean;
   approved_by?: string;
   created_at: string;
@@ -56,6 +57,7 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
         overtime_minutes,
         status,
         is_direct_work,
+        is_extended_hours,
         is_manual_entry,
         approved_by,
         created_at,
@@ -125,6 +127,7 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
         overtime_minutes: record.overtime_minutes || 0,
         status: record.status,
         is_direct_work: record.is_direct_work ?? false,
+        is_extended_hours: record.is_extended_hours ?? false,
         is_manual_entry: record.is_manual_entry ?? false,
         approved_by: record.approved_by,
         created_at: record.created_at,
@@ -157,10 +160,10 @@ export const correctTimeRecordByDeleteAndCreate = async (
     const formattedClockOut = clock_out_time ? localDateTimeToISO(clock_out_time) : null;
 
     // 計算は「削除より前」に行う。失敗してもデータを壊さない。
-    // 社員の個別勤務時間を取得
+    // 社員の個別勤務時間・残業ルール区分を取得
     const { data: employeeData, error: employeeError } = await supabase
       .from('employees')
-      .select('work_start_time, work_end_time')
+      .select('work_start_time, work_end_time, overtime_rule_type')
       .eq('employee_id', employee_id)
       .single();
 
@@ -184,7 +187,7 @@ export const correctTimeRecordByDeleteAndCreate = async (
     }
     const isDirectWork = existingRecord?.is_direct_work === true;
 
-    // 社員の個別勤務時間を使用してステータスを計算（record_date基準でJST判定）。
+    // 社員の個別勤務時間・残業ルール区分を使用してステータスを計算（record_date基準でJST判定）。
     // 直行直帰なら遅刻/早退/残業を無効化し「通常」扱い・残業0（労働時間は計上）。
     const workTimeResult = applyDirectWorkOverride(
       calculateWorkTimeAndStatus(
@@ -192,7 +195,8 @@ export const correctTimeRecordByDeleteAndCreate = async (
         formattedClockOut,
         employeeData.work_start_time,
         employeeData.work_end_time,
-        record_date
+        record_date,
+        employeeData.overtime_rule_type
       ),
       isDirectWork
     );
@@ -200,13 +204,16 @@ export const correctTimeRecordByDeleteAndCreate = async (
     const work_hours = workTimeResult.actualWorkHours;
     const status = workTimeResult.status;
     const overtime_minutes = workTimeResult.overtimeMinutes;
+    const is_extended_hours = workTimeResult.isExtendedHours;
 
-    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分, 直行直帰: ${isDirectWork}`);
+    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分, 直行直帰: ${isDirectWork}, 長時間勤務: ${is_extended_hours}`);
 
     // 削除→作成を単一トランザクションのRPCで実行する。
     // 従来は delete と insert が別呼び出しで、insert が制約違反等で失敗すると
     // 削除済みのその日の記録が消失していた。RPC なら insert 失敗時に delete も
     // 自動ロールバックされ、記録消失を防げる。
+    // RPC (correct_time_record) は is_extended_hours 列を未対応（本番の定義が
+    // リポジトリで未確定なため引数追加はしない）。作成後に別更新で反映する。
     const { data: newRecord, error: rpcError } = await supabase.rpc('correct_time_record', {
       p_employee_id: employee_id,
       p_record_date: record_date,
@@ -221,6 +228,16 @@ export const correctTimeRecordByDeleteAndCreate = async (
     if (rpcError) {
       console.error('Error correcting record (RPC):', rpcError);
       throw new Error('打刻記録の修正に失敗しました: ' + rpcError.message);
+    }
+
+    if ((newRecord as any)?.id) {
+      const { error: extendedHoursError } = await supabase
+        .from('time_records')
+        .update({ is_extended_hours })
+        .eq('id', (newRecord as any).id);
+      if (extendedHoursError) {
+        console.error('Error setting is_extended_hours:', extendedHoursError);
+      }
     }
 
     // 監査ログを記録。実態は「修正」なので UPDATE で記録する
@@ -280,10 +297,10 @@ export const updateTimeRecord = async (
     const formattedClockIn = clock_in_time ? localDateTimeToISO(clock_in_time) : null;
     const formattedClockOut = clock_out_time ? localDateTimeToISO(clock_out_time) : null;
 
-    // 社員の個別勤務時間を取得
+    // 社員の個別勤務時間・残業ルール区分を取得
     const { data: employeeData, error: employeeError } = await supabase
       .from('employees')
-      .select('work_start_time, work_end_time')
+      .select('work_start_time, work_end_time, overtime_rule_type')
       .eq('employee_id', employee_id)
       .single();
 
@@ -307,7 +324,7 @@ export const updateTimeRecord = async (
     }
     const isDirectWork = existingRecord?.is_direct_work === true;
 
-    // 社員の個別勤務時間を使用してステータスを計算（record_date基準でJST判定）。
+    // 社員の個別勤務時間・残業ルール区分を使用してステータスを計算（record_date基準でJST判定）。
     // 直行直帰なら遅刻/早退/残業を無効化し「通常」扱い・残業0（労働時間は計上）。
     const workTimeResult = applyDirectWorkOverride(
       calculateWorkTimeAndStatus(
@@ -315,7 +332,8 @@ export const updateTimeRecord = async (
         formattedClockOut,
         employeeData.work_start_time,
         employeeData.work_end_time,
-        record_date
+        record_date,
+        employeeData.overtime_rule_type
       ),
       isDirectWork
     );
@@ -323,8 +341,9 @@ export const updateTimeRecord = async (
     const work_hours = workTimeResult.actualWorkHours;
     const status = workTimeResult.status;
     const overtime_minutes = workTimeResult.overtimeMinutes;
+    const is_extended_hours = workTimeResult.isExtendedHours;
 
-    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分, 直行直帰: ${isDirectWork}`);
+    console.log(`📊 Employee ${employee_id} work time: ${employeeData.work_start_time}-${employeeData.work_end_time}, Status: ${status}, Overtime: ${overtime_minutes}分, 直行直帰: ${isDirectWork}, 長時間勤務: ${is_extended_hours}`);
 
     // .single() は重複行が存在する日に「更新は済んだのにエラー」という
     // 不整合な結果になるため使わず、配列で受けて先頭を参照する。
@@ -336,6 +355,7 @@ export const updateTimeRecord = async (
         work_hours,
         overtime_minutes,
         status,
+        is_extended_hours,
         updated_at: new Date().toISOString()
       })
       .eq('employee_id', employee_id)
@@ -452,10 +472,10 @@ export const recalculateAllStatus = async (): Promise<void> => {
       throw new Error('打刻記録の取得に失敗しました');
     }
 
-    // 全ての社員の勤務時間を取得
+    // 全ての社員の勤務時間・残業ルール区分を取得
     const { data: employees, error: employeesError } = await supabase
       .from('employees')
-      .select('employee_id, work_start_time, work_end_time');
+      .select('employee_id, work_start_time, work_end_time, overtime_rule_type');
 
     if (employeesError) {
       console.error('Error fetching employees:', employeesError);
@@ -467,7 +487,8 @@ export const recalculateAllStatus = async (): Promise<void> => {
     employees?.forEach((emp: any) => {
       employeeMap.set(emp.employee_id, {
         work_start_time: emp.work_start_time,
-        work_end_time: emp.work_end_time
+        work_end_time: emp.work_end_time,
+        overtime_rule_type: emp.overtime_rule_type
       });
     });
 
@@ -490,18 +511,20 @@ export const recalculateAllStatus = async (): Promise<void> => {
           record.clock_out_time,
           employee.work_start_time,
           employee.work_end_time,
-          record.record_date
+          record.record_date,
+          employee.overtime_rule_type
         ),
         record.is_direct_work === true
       );
 
-      // ステータス・勤務時間・残業時間を再計算して更新
+      // ステータス・勤務時間・残業時間・長時間勤務フラグを再計算して更新
       const { error: updateError } = await supabase
         .from('time_records')
         .update({
           status: workTimeResult.status,
           work_hours: workTimeResult.actualWorkHours,
           overtime_minutes: workTimeResult.overtimeMinutes,
+          is_extended_hours: workTimeResult.isExtendedHours,
           updated_at: new Date().toISOString()
         })
         .eq('id', record.id);
