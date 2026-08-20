@@ -111,7 +111,9 @@ export const employeeService = {
     if (error) {
       console.error('❌ 社員作成エラー:', error)
       console.error('❌ エラー詳細:', JSON.stringify(error, null, 2))
-      throw error
+      // Supabaseのエラーはinstanceof Errorではないため、そのままthrowすると
+      // 呼び出し側で「保存に失敗しました」という中身の分からない表示になる
+      throw new Error('社員の作成に失敗しました: ' + error.message)
     }
 
     console.log('✅ 社員作成成功:', data)
@@ -140,7 +142,9 @@ export const employeeService = {
     if (error) {
       console.error('❌ 社員更新エラー:', error)
       console.error('❌ エラー詳細:', JSON.stringify(error, null, 2))
-      throw error
+      // Supabaseのエラーはinstanceof Errorではないため、そのままthrowすると
+      // 呼び出し側で「保存に失敗しました」という中身の分からない表示になる
+      throw new Error('社員の更新に失敗しました: ' + error.message)
     }
 
     console.log('✅ 社員更新成功:', data)
