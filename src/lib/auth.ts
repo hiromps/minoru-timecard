@@ -240,8 +240,8 @@ export const simpleAuth = {
       }
 
       if (data.user) {
-        // 管理者プロファイル作成
-        await supabase
+        // 管理者プロファイル作成（既存アカウントの場合は重複エラーになるため結果は記録のみ）
+        const { error: profileError } = await supabase
           .from('admin_profiles')
           .insert({
             id: data.user.id,
@@ -249,16 +249,26 @@ export const simpleAuth = {
             is_active: true
           })
 
+        if (profileError) {
+          console.error('管理者プロファイル作成エラー:', profileError)
+        }
+
         // 即座にログイン
-        const { data: signInData } = await supabase.auth.signInWithPassword({
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
           email: adminEmail,
           password: password
         })
 
+        // signUpは既存メールでも200を返すため、ここで実際にセッションが
+        // 取得できたかを確認しないと、パスワード不一致でも「成功」を返してしまう
+        if (signInError || !signInData.session) {
+          throw signInError || new Error('ログインに失敗しました')
+        }
+
         return {
           success: true,
-          user: signInData?.user,
-          token: signInData?.session?.access_token
+          user: signInData.user,
+          token: signInData.session.access_token
         }
       }
 
