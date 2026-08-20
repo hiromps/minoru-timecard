@@ -24,6 +24,19 @@
   display: contents;
 }
 
+/* モバイル(ファーストビュー)のカード表示順。.tc-row が display:contents の間は
+   これらのカードが .time-clock の flex-column に直接並ぶため、order で
+   「出勤/退勤ボタン」を「本日の状況」より上に表示する（DOM順・タブ移動順は変えない）。
+   display:contents で複数行がフラット化されるため、対象カード全てに明示的な
+   order を振って意図した並びを固定する（一部だけ order を変えると他行の
+   カードより先頭に出てしまうため）。768px以上は下の @media で order:0 に戻す。 */
+.clock-header-compact { order: 1; }
+.employee-select-compact { order: 2; }
+.clock-buttons-top { order: 3; }
+.today-status-container { order: 4; }
+.absence-card { order: 5; }
+.employee-calendar-compact { order: 6; }
+
 @media (min-width: 768px) {
   .tc-row {
     display: flex;
@@ -34,6 +47,9 @@
 
   .tc-row > * {
     margin-bottom: 0;
+    /* タブレット以上は .tc-row が実際の flex 行になり、行ごとに独立した
+       整列コンテキストになるため、モバイル用の order を解除してDOM順に戻す。 */
+    order: 0;
   }
 
   .tc-row-clock-employee .clock-header-compact {
