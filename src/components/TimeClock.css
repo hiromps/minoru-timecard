@@ -180,6 +180,7 @@
 @media (min-width: 768px) {
   .clock-buttons-top {
     flex-direction: row;
+    flex-wrap: wrap;
     gap: 35px;
     margin-bottom: 40px;
   }
@@ -295,8 +296,51 @@
 
 .btn-clock-out:active {
   transform: translateY(-1px);
-  box-shadow: 
+  box-shadow:
     0 6px 16px rgba(231, 76, 60, 0.3),
+    0 3px 8px rgba(0, 0, 0, 0.1),
+    inset 0 3px 12px rgba(0, 0, 0, 0.1);
+}
+
+.btn-absence {
+  background: linear-gradient(135deg, #95a5a6 0%, #b2bec3 100%);
+  color: white;
+  border: 2px solid #7f8c8d;
+  text-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
+  font-size: 20px !important;
+  font-weight: 800;
+  padding: 12px 20px;
+  min-height: 56px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+}
+
+@media (min-width: 768px) {
+  .btn-absence {
+    border: 3px solid #7f8c8d;
+    font-size: 26px !important;
+    padding: 14px 28px;
+    min-height: 70px;
+    width: auto;
+  }
+}
+
+.btn-absence:hover:not(:disabled) {
+  background: linear-gradient(135deg, #7f8c8d 0%, #95a5a6 100%);
+  border-color: #636e72;
+  transform: translateY(-4px);
+  box-shadow:
+    0 12px 28px rgba(127, 140, 141, 0.4),
+    0 6px 16px rgba(0, 0, 0, 0.15),
+    inset 0 3px 6px rgba(255, 255, 255, 0.3);
+}
+
+.btn-absence:active {
+  transform: translateY(-1px);
+  box-shadow:
+    0 6px 16px rgba(127, 140, 141, 0.3),
     0 3px 8px rgba(0, 0, 0, 0.1),
     inset 0 3px 12px rgba(0, 0, 0, 0.1);
 }
@@ -645,6 +689,45 @@
   box-shadow: 0 6px 16px rgba(231, 76, 60, 0.4) !important;
 }
 
+/* 欠勤モーダル専用スタイル */
+.modal-absence {
+  border: 3px solid #7f8c8d;
+  box-shadow: 0 8px 32px rgba(127, 140, 141, 0.3);
+}
+
+.modal-header-absence {
+  background: linear-gradient(135deg, #ecf0f1 0%, #dfe4e6 100%) !important;
+  border-color: #7f8c8d !important;
+  color: #4a4a4a !important;
+  border-radius: 13px 13px 0 0 !important;
+  margin: -3px -3px 0 -3px !important;
+}
+
+.modal-header-absence h3 {
+  color: #4a4a4a !important;
+  font-weight: 700;
+}
+
+.operation-absence {
+  color: #636e72;
+  font-weight: 800;
+  background: linear-gradient(135deg, #ecf0f1 0%, #dfe4e6 100%);
+  padding: 4px 12px;
+  border-radius: 20px;
+  margin-left: 8px;
+}
+
+.btn-confirm-absence {
+  background: linear-gradient(135deg, #7f8c8d 0%, #95a5a6 100%) !important;
+  border-color: #636e72 !important;
+}
+
+.btn-confirm-absence:hover {
+  background: linear-gradient(135deg, #636e72 0%, #7f8c8d 100%) !important;
+  border-color: #4a4a4a !important;
+  box-shadow: 0 6px 16px rgba(127, 140, 141, 0.4) !important;
+}
+
 /* モーダル内のスクロールバーを非表示 */
 .modal::-webkit-scrollbar,
 .modal-body::-webkit-scrollbar,
@@ -739,6 +822,15 @@
   color: #004085;
   border: 1px solid #007bff;
   box-shadow: 0 2px 4px rgba(0, 123, 255, 0.2);
+}
+
+.record-status.status-absence,
+.status-badge-today.status-absence,
+.employee-calendar-compact .record-status.status-absence {
+  background: linear-gradient(135deg, #ecf0f1 0%, #dfe4e6 100%);
+  color: #4a4a4a;
+  border: 1px solid #7f8c8d;
+  box-shadow: 0 2px 4px rgba(127, 140, 141, 0.2);
 }
 
 .employee-calendar-compact .record-body {

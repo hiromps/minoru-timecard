@@ -130,6 +130,8 @@ export interface EmployeeTotal {
   workDays: number;
   /** 未退勤（退勤打刻なし）の日数 */
   openDays: number;
+  /** 欠勤（ステータスが「欠勤」）の日数 */
+  absenceDays: number;
   /** 合計勤務時間（時, 小数） */
   totalWorkHours: number;
   /** 合計残業（分） */
@@ -193,6 +195,7 @@ export const validatePayroll = (
         employee_name,
         workDays: 0,
         openDays: 0,
+        absenceDays: 0,
         totalWorkHours: 0,
         totalOvertimeMinutes: 0,
         lateCount: 0,
@@ -217,6 +220,8 @@ export const validatePayroll = (
     const hasIn = !!record.clock_in_time;
     const hasOut = !!record.clock_out_time;
     const workHours = record.work_hours || 0;
+    // 欠勤は出勤・退勤とも打刻されない前提の記録なので、通常の打刻漏れ検出の対象外とする
+    const isAbsence = record.status === '欠勤';
 
     const addIssue = (severity: IssueSeverity, message: string) => {
       rowIssues.push(message);
@@ -231,12 +236,14 @@ export const validatePayroll = (
     };
 
     // --- 不備検出 ---
-    if (!hasIn && !hasOut) {
-      addIssue('error', '出勤・退勤ともに打刻がありません');
-    } else if (!hasIn && hasOut) {
-      addIssue('error', '出勤打刻がありません（勤務時間を正しく計上できません）');
-    } else if (hasIn && !hasOut) {
-      addIssue('error', '退勤打刻がありません（未退勤・勤務時間を計上できません）');
+    if (!isAbsence) {
+      if (!hasIn && !hasOut) {
+        addIssue('error', '出勤・退勤ともに打刻がありません');
+      } else if (!hasIn && hasOut) {
+        addIssue('error', '出勤打刻がありません（勤務時間を正しく計上できません）');
+      } else if (hasIn && !hasOut) {
+        addIssue('error', '退勤打刻がありません（未退勤・勤務時間を計上できません）');
+      }
     }
 
     if (record.status === '設定エラー') {
@@ -267,6 +274,8 @@ export const validatePayroll = (
       );
     } else if (hasIn && !hasOut) {
       t.openDays += 1;
+    } else if (!isDuplicateExtra && isAbsence) {
+      t.absenceDays += 1;
     }
     // 残業も勤務時間と同様、出勤・退勤がそろい設定エラーでない行のみ加算する
     // （未退勤行・設定エラー行の overtime_minutes を給与集計へ混入させない）
@@ -384,7 +393,7 @@ export const buildPayrollCSV = (report: PayrollReport): string => {
   lines.push('【社員別集計】');
   lines.push(
     csvRow([
-      '社員ID', '社員名', '勤務日数', '未退勤',
+      '社員ID', '社員名', '勤務日数', '未退勤', '欠勤',
       '合計勤務時間', '合計勤務時間(時)', '合計残業', '合計残業(分)',
       '遅刻', '早退', '不備件数',
     ])
@@ -396,6 +405,7 @@ export const buildPayrollCSV = (report: PayrollReport): string => {
         t.employee_name,
         t.workDays,
         t.openDays,
+        t.absenceDays,
         formatWorkHoursForCSV(t.totalWorkHours),
         decimalHours(t.totalWorkHours),
         formatMinutesForCSV(t.totalOvertimeMinutes),

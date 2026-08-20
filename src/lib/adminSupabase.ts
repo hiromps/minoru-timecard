@@ -326,8 +326,8 @@ export const updateTimeRecord = async (
   }
 };
 
-// 監査ログの記録
-const logCorrectionAction = async (
+// 監査ログの記録（打刻修正・欠勤登録など time_records への変更理由を記録する）
+export const logCorrectionAction = async (
   employee_id: string,
   record_date: string,
   action: string,
@@ -444,6 +444,10 @@ export const recalculateAllStatus = async (): Promise<void> => {
     for (const record of records || []) {
       const employee = employeeMap.get(record.employee_id);
       if (!employee) continue;
+
+      // 欠勤は打刻由来の記録ではない（出勤・退勤とも null）ため、
+      // 通常の再計算ロジックに通すと「通常」に上書きされてしまう。対象外にする。
+      if (record.status === '欠勤') continue;
 
       // 直行・直帰の記録は遅刻/早退/残業判定を無効化し「通常」扱い・残業0とする
       // （勤務時間は再計算値）。全経路で共通のヘルパーを用いて統一する。

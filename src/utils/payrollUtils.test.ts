@@ -103,6 +103,20 @@ describe('validatePayroll（不備検出）', () => {
     expect(t.openDays).toBe(1);
   });
 
+  it('欠勤ステータスは打刻漏れエラーにせず、欠勤日数として集計する', () => {
+    const report = validatePayroll(
+      [rec({ status: '欠勤', clock_in_time: null, clock_out_time: null, work_hours: 0 })],
+      [{ employee_id: '001', name: '田中太郎' }],
+      period
+    );
+    expect(report.errorCount).toBe(0);
+    expect(report.warningCount).toBe(0);
+    const t = report.employeeTotals.find((x) => x.employee_id === '001')!;
+    expect(t.absenceDays).toBe(1);
+    expect(t.workDays).toBe(0);
+    expect(t.openDays).toBe(0);
+  });
+
   it('出勤打刻なしをエラー検出', () => {
     const report = validatePayroll(
       [rec({ clock_in_time: null })],

@@ -8,6 +8,7 @@ import { localDateTimeToISO, getJSTDate, getJSTTimeString, getJSTYearMonth } fro
 // ステータス→表示用CSSクラス変換（本日の状況・勤務記録の両方で使用）
 const statusToClass = (status: string | null | undefined): string => {
   if (status === '通常') return 'normal';
+  if (status === '欠勤') return 'absence';
   const s = status ?? '';
   if (s.includes('遅刻')) return 'late';
   if (s.includes('早退')) return 'early';
@@ -24,6 +25,7 @@ const statusToLabel = (status: string | null | undefined): string => {
     case '残業': return '💪 残業';
     case '遅刻・早退': return '⚠️🏃 遅刻・早退';
     case '遅刻・残業': return '⚠️💪 遅刻・残業';
+    case '欠勤': return '🤒 欠勤';
     default: return status ?? '';
   }
 };
@@ -45,6 +47,8 @@ const TimeClock: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState<boolean>(false);
   const [recordsError, setRecordsError] = useState<boolean>(false);
   const [todayRecordError, setTodayRecordError] = useState<boolean>(false);
+  const [showAbsenceModal, setShowAbsenceModal] = useState<boolean>(false);
+  const [absenceReason, setAbsenceReason] = useState<string>('');
 
   const fetchEmployeeRecords = useCallback(async (employeeId: string) => {
     try {
@@ -200,6 +204,43 @@ const TimeClock: React.FC = () => {
   };
 
 
+  const handleAbsenceAction = () => {
+    if (!selectedEmployee) {
+      alert('社員を選択してください');
+      return;
+    }
+    setAbsenceReason('');
+    setShowAbsenceModal(true);
+  };
+
+  const confirmAbsenceAction = async () => {
+    // 二重送信防止：処理中は何もしない
+    if (isSubmitting) return;
+
+    setIsSubmitting(true);
+    try {
+      await timeRecordService.markAbsence(selectedEmployee, absenceReason);
+      alert('本日の欠勤を記録しました');
+
+      if (selectedEmployee && showCalendar) {
+        await fetchEmployeeRecords(selectedEmployee);
+      }
+      if (selectedEmployee) {
+        await fetchTodayRecord(selectedEmployee);
+      }
+
+      setSelectedEmployee('');
+      setTodayRecord(null);
+    } catch (error) {
+      console.error('欠勤登録に失敗しました:', error);
+      alert(`欠勤登録に失敗しました: ${error instanceof Error ? error.message : 'エラーが発生しました'}`);
+    } finally {
+      setIsSubmitting(false);
+      setShowAbsenceModal(false);
+      setAbsenceReason('');
+    }
+  };
+
   const selectedEmployeeName = employees.find(emp => emp.employee_id === selectedEmployee)?.name || '';
 
   const handleEmployeeChange = (employeeId: string) => {
@@ -317,6 +358,12 @@ const TimeClock: React.FC = () => {
             className="btn btn-clock-out"
           >
             退勤
+          </button>
+          <button
+            onClick={handleAbsenceAction}
+            className="btn btn-absence"
+          >
+            🤒 欠勤
           </button>
         </div>
       )}
@@ -442,6 +489,49 @@ const TimeClock: React.FC = () => {
                 onClick={confirmClockAction}
                 disabled={isSubmitting}
                 className={`btn-primary ${clockType === 'in' ? 'btn-confirm-in' : 'btn-confirm-out'}`}
+              >
+                {isSubmitting ? '処理中...' : '確認'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showAbsenceModal && (
+        <div className="modal-overlay">
+          <div className="modal modal-absence">
+            <div className="modal-header modal-header-absence">
+              <h3>
+                欠勤登録
+                <span className="operation-absence">欠勤</span>
+              </h3>
+            </div>
+            <div className="modal-body">
+              <p>
+                <strong>{selectedEmployeeName}</strong>さんの本日を<strong>欠勤</strong>として記録します
+              </p>
+
+              <div style={{ margin: '15px 0' }}>
+                <label style={{ display: 'block', marginBottom: '5px' }}>
+                  理由（任意）:
+                </label>
+                <textarea
+                  value={absenceReason}
+                  onChange={(e) => setAbsenceReason(e.target.value)}
+                  placeholder="例: 体調不良のため"
+                  rows={3}
+                  style={{ width: '100%', padding: '8px', fontSize: '16px', boxSizing: 'border-box' }}
+                />
+              </div>
+            </div>
+            <div className="modal-actions">
+              <button onClick={() => setShowAbsenceModal(false)}>
+                キャンセル
+              </button>
+              <button
+                onClick={confirmAbsenceAction}
+                disabled={isSubmitting}
+                className="btn-primary btn-confirm-absence"
               >
                 {isSubmitting ? '処理中...' : '確認'}
               </button>

@@ -2,6 +2,7 @@ import { supabase, Employee, TimeRecord, TimeRecordStatus, isDevMode } from './s
 import { demoEmployeeService, demoTimeRecordService } from './demoDatabase'
 import { getJSTDate, getJSTMonthRange } from '../utils/dateUtils'
 import { calculateWorkTimeAndStatus, applyDirectWorkOverride } from '../utils/workTimeUtils'
+import { logCorrectionAction } from './adminSupabase'
 
 /**
  * 退勤対象の出勤レコードを取得する（本番Supabase経路用）。
@@ -343,6 +344,75 @@ export const timeRecordService = {
     }
 
     console.log('✅ 退勤打刻成功:', data)
+    return data
+  },
+
+  // 欠勤登録（体調不良等で出勤しない日を明示的に記録する）
+  async markAbsence(employeeId: string, reason?: string): Promise<TimeRecord> {
+    console.log('🤒 欠勤登録開始:', { employeeId, isDevMode })
+
+    if (isDevMode) {
+      console.log('🔧 デモモードで欠勤登録処理')
+      return demoTimeRecordService.markAbsence(employeeId, reason)
+    }
+
+    console.log('🏭 本番モードで欠勤登録処理')
+
+    const employee = await employeeService.findByEmployeeId(employeeId)
+    if (!employee) {
+      throw new Error('社員が見つかりません')
+    }
+
+    const today = getJSTDate()
+
+    // 二重登録の事前チェック（出勤・退勤・欠勤いずれかの既存記録があれば弾く）。
+    // .limit(1) の配列で受けることで重複行が既に存在する日にも耐性を持たせる。
+    const { data: existing, error: existingError } = await supabase
+      .from('time_records')
+      .select('id')
+      .eq('employee_id', employeeId)
+      .eq('record_date', today)
+      .limit(1)
+    if (existingError) {
+      console.error('❌ 既存記録確認エラー:', existingError)
+      throw new Error('本日の記録の確認に失敗しました: ' + existingError.message)
+    }
+    if (existing && existing.length > 0) {
+      throw new Error('本日は既に打刻または欠勤の記録があります')
+    }
+
+    console.log('📝 欠勤データ挿入開始:', { employee_id: employeeId, record_date: today })
+
+    const { data, error } = await supabase
+      .from('time_records')
+      .insert({
+        employee_id: employeeId,
+        record_date: today,
+        clock_in_time: null,
+        clock_out_time: null,
+        status: '欠勤',
+        work_hours: 0,
+        overtime_minutes: 0,
+        is_manual_entry: true
+      })
+      .select()
+      .single()
+
+    if (error) {
+      console.error('❌ 欠勤登録エラー:', error)
+      console.error('❌ エラー詳細:', JSON.stringify(error, null, 2))
+      if (error.code === '23505') {
+        throw new Error('本日は既に打刻または欠勤の記録があります')
+      }
+      throw error
+    }
+
+    // 理由は監査ログに記録する（打刻修正と同じ経路。失敗しても欠勤登録自体は成立させる）
+    if (reason && reason.trim()) {
+      await logCorrectionAction(employeeId, today, 'INSERT', reason.trim(), data?.id)
+    }
+
+    console.log('✅ 欠勤登録成功:', data)
     return data
   },
 

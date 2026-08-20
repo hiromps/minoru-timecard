@@ -477,6 +477,17 @@
   margin-left: 6px;
 }
 
+.status.欠勤 {
+  background: #7f8c8d;
+  color: white;
+  border-color: #4a4a4a;
+}
+
+.status.欠勤::after {
+  content: '🤒';
+  margin-left: 6px;
+}
+
 /* バッジ */
 .manual-badge,
 .auto-badge {

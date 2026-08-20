@@ -156,6 +156,40 @@ export const demoTimeRecordService = {
     return mockTimeRecords[existingIndex]
   },
 
+  async markAbsence(employeeId: string, reason?: string): Promise<TimeRecord> {
+    const today = getJSTDate()
+    const now = new Date().toISOString()
+
+    const existingIndex = mockTimeRecords.findIndex(
+      record => record.employee_id === employeeId && record.record_date === today
+    )
+    if (existingIndex !== -1) {
+      throw new Error('本日は既に打刻または欠勤の記録があります')
+    }
+
+    const employee = mockEmployees.find(emp => emp.employee_id === employeeId)
+    if (!employee) {
+      throw new Error('社員が見つかりません')
+    }
+
+    const newRecord: TimeRecord = {
+      id: Date.now(),
+      employee_id: employeeId,
+      record_date: today,
+      clock_in_time: null,
+      clock_out_time: null,
+      status: '欠勤',
+      work_hours: 0,
+      overtime_minutes: 0,
+      created_at: now,
+      updated_at: now
+    }
+    mockTimeRecords.push(newRecord)
+
+    console.log('🔧 デモモード: 欠勤登録しました', employee.name, reason ? `理由: ${reason}` : '')
+    return newRecord
+  },
+
   async clockInWithTime(employeeId: string, specifiedTime: string, isDirectWork: boolean = false): Promise<TimeRecord> {
     const clockInTime = new Date(specifiedTime)
     const today = getJSTDate(clockInTime)
