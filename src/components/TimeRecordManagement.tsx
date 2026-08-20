@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import './TimeRecordManagement.css';
-import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, updateTimeRecord, getEmployees, TimeRecordWithEmployee, deleteTimeRecord, recalculateAllStatus } from '../lib/adminSupabase';
+import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, correctToAbsence, updateTimeRecord, getEmployees, TimeRecordWithEmployee, deleteTimeRecord, recalculateAllStatus } from '../lib/adminSupabase';
 import { Employee } from '../lib/supabase';
 import { formatWorkHours } from '../utils/timeUtils';
 import { minutesToHoursDisplay } from '../utils/overtimeCalculator';
@@ -24,6 +24,7 @@ interface CorrectionData {
   clock_out_time: string;
   reason: string;
   action: 'update' | 'delete_and_create';
+  isAbsence: boolean;
 }
 
 const CorrectionModal: React.FC<CorrectionModalProps> = ({
@@ -40,8 +41,10 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
     clock_in_time: '',
     clock_out_time: '',
     reason: '',
-    action: 'update'
+    action: 'update',
+    isAbsence: false
   });
+  const isNewRecord = !record;
 
   // モーダル開閉時のbodyスクロール制御
   useEffect(() => {
@@ -63,6 +66,7 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
   }, [isOpen]);
 
   useEffect(() => {
+    if (!isOpen) return;
     if (record) {
       // datetime-local の初期値はJST基準で生成する。ローカルタイムゲッター
       // (getHours等) を使うと非JSTブラウザで壁時計がズレ、保存時に
@@ -74,10 +78,22 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
         clock_in_time: getJSTDateTimeLocal(record.clock_in_time),
         clock_out_time: getJSTDateTimeLocal(record.clock_out_time),
         reason: '管理者による時刻修正',
-        action: 'update'
+        action: 'update',
+        isAbsence: record.status === '欠勤'
+      });
+    } else {
+      // 新規追加: 記録が無い社員・日付を後から追加するためのブランクな状態
+      setFormData({
+        employee_id: '',
+        record_date: '',
+        clock_in_time: '',
+        clock_out_time: '',
+        reason: '',
+        action: 'delete_and_create',
+        isAbsence: false
       });
     }
-  }, [record]);
+  }, [record, isOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -86,7 +102,8 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
     // check_work_hours: 0..24) 違反による不可解な失敗を防ぐ。
     // 特に「削除→作成」経路は非トランザクションのため、INSERT が制約違反で
     // 失敗するとその日の記録が消失する。事前に弾くことでデータ消失を防止する。
-    if (formData.clock_in_time && formData.clock_out_time) {
+    // 欠勤登録は出勤・退勤を持たないため、この検証自体が対象外。
+    if (!formData.isAbsence && formData.clock_in_time && formData.clock_out_time) {
       // datetime-local 文字列同士の比較（同一基準で解釈されるため相対比較は安全）
       const cin = new Date(formData.clock_in_time).getTime();
       const cout = new Date(formData.clock_out_time).getTime();
@@ -114,7 +131,7 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
     <div className="modal-overlay">
       <div className="modal-content">
         <div className="modal-header">
-          <h3>打刻記録の修正</h3>
+          <h3>{isNewRecord ? '打刻記録の追加' : '打刻記録の修正'}</h3>
           <button className="close-btn" onClick={onClose}>×</button>
         </div>
         
@@ -145,66 +162,87 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
             />
           </div>
 
-          <div className="form-row">
-            <div className="form-group">
-              <label>出勤時刻:</label>
+          <div className="form-group">
+            <label style={{ display: 'flex', alignItems: 'center' }}>
               <input
-                type="datetime-local"
-                value={formData.clock_in_time}
-                onChange={(e) => setFormData(prev => ({ ...prev, clock_in_time: e.target.value }))}
-                required
+                type="checkbox"
+                checked={formData.isAbsence}
+                onChange={(e) => setFormData(prev => ({
+                  ...prev,
+                  isAbsence: e.target.checked,
+                  clock_in_time: '',
+                  clock_out_time: ''
+                }))}
+                style={{ marginRight: '8px' }}
               />
-              <small style={{color: '#666', fontSize: '12px', marginTop: '4px', display: 'block'}}>
-                ※ 出勤時刻は必須です
-              </small>
-            </div>
-            <div className="form-group">
-              <label>退勤時刻:</label>
-              <div className="time-input-group">
-                <input
-                  type="datetime-local"
-                  value={formData.clock_out_time}
-                  onChange={(e) => setFormData(prev => ({ ...prev, clock_out_time: e.target.value }))}
-                  placeholder="未退勤の場合は空のままにしてください"
-                />
-                <button
-                  type="button"
-                  onClick={() => setFormData(prev => ({ ...prev, clock_out_time: '' }))}
-                  className="clear-time-btn"
-                  title="退勤時刻を空にする"
-                >
-                  空にする
-                </button>
-              </div>
-              <small style={{color: '#666', fontSize: '12px', marginTop: '4px', display: 'block'}}>
-                ※ 未退勤の場合は「空にする」ボタンで空欄にできます
-              </small>
-            </div>
+              欠勤として登録（出勤・退勤なし）
+            </label>
           </div>
 
-          <div className="form-group">
-            <label>修正方法:</label>
-            <div className="radio-group">
-              <label>
+          {!formData.isAbsence && (
+            <div className="form-row">
+              <div className="form-group">
+                <label>出勤時刻:</label>
                 <input
-                  type="radio"
-                  value="update"
-                  checked={formData.action === 'update'}
-                  onChange={(e) => setFormData(prev => ({ ...prev, action: e.target.value as 'update' }))}
+                  type="datetime-local"
+                  value={formData.clock_in_time}
+                  onChange={(e) => setFormData(prev => ({ ...prev, clock_in_time: e.target.value }))}
+                  required
                 />
-                既存記録を更新
-              </label>
-              <label>
-                <input
-                  type="radio"
-                  value="delete_and_create"
-                  checked={formData.action === 'delete_and_create'}
-                  onChange={(e) => setFormData(prev => ({ ...prev, action: e.target.value as 'delete_and_create' }))}
-                />
-                削除して再作成（推奨）
-              </label>
+                <small style={{color: '#666', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                  ※ 出勤時刻は必須です
+                </small>
+              </div>
+              <div className="form-group">
+                <label>退勤時刻:</label>
+                <div className="time-input-group">
+                  <input
+                    type="datetime-local"
+                    value={formData.clock_out_time}
+                    onChange={(e) => setFormData(prev => ({ ...prev, clock_out_time: e.target.value }))}
+                    placeholder="未退勤の場合は空のままにしてください"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setFormData(prev => ({ ...prev, clock_out_time: '' }))}
+                    className="clear-time-btn"
+                    title="退勤時刻を空にする"
+                  >
+                    空にする
+                  </button>
+                </div>
+                <small style={{color: '#666', fontSize: '12px', marginTop: '4px', display: 'block'}}>
+                  ※ 未退勤の場合は「空にする」ボタンで空欄にできます
+                </small>
+              </div>
             </div>
-          </div>
+          )}
+
+          {!formData.isAbsence && !isNewRecord && (
+            <div className="form-group">
+              <label>修正方法:</label>
+              <div className="radio-group">
+                <label>
+                  <input
+                    type="radio"
+                    value="update"
+                    checked={formData.action === 'update'}
+                    onChange={(e) => setFormData(prev => ({ ...prev, action: e.target.value as 'update' }))}
+                  />
+                  既存記録を更新
+                </label>
+                <label>
+                  <input
+                    type="radio"
+                    value="delete_and_create"
+                    checked={formData.action === 'delete_and_create'}
+                    onChange={(e) => setFormData(prev => ({ ...prev, action: e.target.value as 'delete_and_create' }))}
+                  />
+                  削除して再作成（推奨）
+                </label>
+              </div>
+            </div>
+          )}
 
           <div className="form-group">
             <label>修正理由:</label>
@@ -222,7 +260,7 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
               キャンセル
             </button>
             <button type="submit" className="primary-btn" disabled={loading}>
-              {loading ? '処理中...' : '修正実行'}
+              {loading ? '処理中...' : (isNewRecord ? '追加実行' : '修正実行')}
             </button>
           </div>
         </form>
@@ -292,9 +330,30 @@ const TimeRecordManagement: React.FC = () => {
 
   // 修正処理
   const handleCorrection = async (data: CorrectionData) => {
+    // 新規追加（一覧のその行から開いたのではない）で、かつ同じ社員・日付に
+    // 既に記録がある場合は上書きになるため確認する。誤って別人の記録を
+    // 消してしまう事故を防ぐ。
+    const targetingSameRow =
+      correctionModal.record?.employee_id === data.employee_id &&
+      correctionModal.record?.record_date === data.record_date;
+    if (!targetingSameRow) {
+      const existing = timeRecords.find(
+        (r) => r.employee_id === data.employee_id && r.record_date === data.record_date
+      );
+      if (existing) {
+        const ok = window.confirm(
+          `${data.employee_id} の ${data.record_date} には既に記録（ステータス: ${existing.status}）があります。\n\n上書きしますか？`
+        );
+        if (!ok) return;
+      }
+    }
+
     setLoading(true);
     try {
-      if (data.action === 'delete_and_create') {
+      if (data.isAbsence) {
+        // 欠勤として登録（出勤・退勤なし）
+        await correctToAbsence(data.employee_id, data.record_date, data.reason);
+      } else if (data.action === 'delete_and_create') {
         // 削除してから再作成
         await correctTimeRecordByDeleteAndCreate(
           data.employee_id,
@@ -314,12 +373,12 @@ const TimeRecordManagement: React.FC = () => {
         );
       }
 
-      alert('打刻記録を修正しました');
+      alert('打刻記録を保存しました');
       setCorrectionModal({ isOpen: false, record: null });
       await fetchTimeRecords(); // データを再取得
     } catch (error: any) {
       console.error('Error correcting record:', error);
-      alert(`修正に失敗しました: ${error.message}`);
+      alert(`保存に失敗しました: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -377,6 +436,13 @@ const TimeRecordManagement: React.FC = () => {
       <div className="management-header">
         <h2>打刻記録管理</h2>
         <div className="header-actions">
+          <button
+            onClick={() => setCorrectionModal({ isOpen: true, record: null })}
+            disabled={loading}
+            className="add-record-btn"
+          >
+            ＋ 新規追加
+          </button>
           <button onClick={handleRecalculateStatus} disabled={loading} className="recalculate-btn">
             {loading ? '処理中...' : 'ステータス再計算'}
           </button>

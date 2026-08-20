@@ -75,7 +75,8 @@
 }
 
 .refresh-btn,
-.recalculate-btn {
+.recalculate-btn,
+.add-record-btn {
   background: #3b82f6;
   color: white;
   border: none;
@@ -94,13 +95,38 @@
 
 @media (min-width: 640px) {
   .refresh-btn,
-  .recalculate-btn {
+  .recalculate-btn,
+  .add-record-btn {
     padding: 12px 24px;
     border-radius: 12px;
     font-size: 14px;
     box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);
     gap: 8px;
   }
+}
+
+.add-record-btn {
+  background: #10b981;
+  box-shadow: 0 2px 8px rgba(16, 185, 129, 0.3);
+}
+
+@media (min-width: 640px) {
+  .add-record-btn {
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.4);
+  }
+}
+
+.add-record-btn:hover:not(:disabled) {
+  background: #059669;
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(16, 185, 129, 0.6);
+}
+
+.add-record-btn:disabled {
+  background: #9ca3af;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: 0 2px 8px rgba(156, 163, 175, 0.3);
 }
 
 .refresh-btn::before {

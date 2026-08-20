@@ -233,6 +233,39 @@ export const correctTimeRecordByDeleteAndCreate = async (
   }
 };
 
+// 欠勤として登録（管理者用）。指定日に記録が無い社員の欠勤を後から追加する場合や、
+// 既存の誤った記録を欠勤に直す場合の両方に使う。出勤・退勤時刻は持たせない。
+// correct_time_record RPC は対象日を削除→作成するため、記録の有無を問わず使える。
+export const correctToAbsence = async (
+  employee_id: string,
+  record_date: string,
+  reason: string
+): Promise<void> => {
+  try {
+    const { data: newRecord, error: rpcError } = await supabase.rpc('correct_time_record', {
+      p_employee_id: employee_id,
+      p_record_date: record_date,
+      p_clock_in_time: null,
+      p_clock_out_time: null,
+      p_work_hours: 0,
+      p_overtime_minutes: 0,
+      p_status: '欠勤',
+      p_is_direct_work: false
+    });
+
+    if (rpcError) {
+      console.error('Error registering absence (RPC):', rpcError);
+      throw new Error('欠勤の登録に失敗しました: ' + rpcError.message);
+    }
+
+    await logCorrectionAction(employee_id, record_date, 'INSERT', reason, (newRecord as any)?.id);
+
+  } catch (error) {
+    console.error('Error in correctToAbsence:', error);
+    throw error;
+  }
+};
+
 // 打刻記録を更新
 export const updateTimeRecord = async (
   employee_id: string,
