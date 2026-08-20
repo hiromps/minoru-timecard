@@ -20,6 +20,7 @@
 | 0006 | `0006_drop_broken_admin_time_record_functions.sql` | 壊れた未使用のデッド関数 `admin_create_time_record` / `admin_delete_time_record`（各2オーバーロード）を削除。 |
 | 0007 | `0007_add_updated_at_triggers.sql` | `employees` / `time_records` / `admin_profiles` に `updated_at` 自動更新トリガーを設置。 |
 | 0008 | `0008_fix_audit_trigger_function_columns.sql` | `audit_trigger_function` の列名を `old_values` / `new_values` に修正（トリガーは未設置）。 |
+| 0009 | `0009_add_absence_status_to_status_check.sql` | `time_records_status_check` に欠勤登録機能用の `'欠勤'` を追加。 |
 
 ## 元ファイル対応表（0001〜0004）
 

@@ -404,7 +404,9 @@ export const timeRecordService = {
       if (error.code === '23505') {
         throw new Error('本日は既に打刻または欠勤の記録があります')
       }
-      throw error
+      // Supabaseのエラーはinstanceof Errorではないため、そのままthrowすると
+      // 呼び出し側で「エラーが発生しました」という中身の分からない表示になる
+      throw new Error('欠勤の登録に失敗しました: ' + error.message)
     }
 
     // 理由は監査ログに記録する（打刻修正と同じ経路。失敗しても欠勤登録自体は成立させる）

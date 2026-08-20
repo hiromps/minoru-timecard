@@ -15,6 +15,9 @@
 --   * updated_at 自動更新トリガーを employees / time_records / admin_profiles に設置
 --   * audit_trigger_function の列名を old_values / new_values に修正（トリガーは未設置）
 --
+-- 2026-08-20 に以下を本番へ適用済み（本ファイルも反映）:
+--   * time_records_status_check に '欠勤'（欠勤登録機能）を追加（0009）
+--
 -- 注意:
 --   * (employee_id, record_date) の UNIQUE 制約は無い（1日1レコードはアプリ側で担保）。
 -- =============================================================================
@@ -56,7 +59,7 @@ CREATE TABLE IF NOT EXISTS public.time_records (
     overtime_minutes integer NOT NULL DEFAULT 0,          -- 残業（分）= 退勤 - 所定終業、0以上
     is_direct_work   boolean NOT NULL DEFAULT false,      -- 直行・直帰（遅刻/早退/残業判定を無効化）
     CONSTRAINT time_records_status_check CHECK (
-        status = ANY (ARRAY['通常','遅刻','早退','残業','遅刻・早退','遅刻・残業','設定エラー'])
+        status = ANY (ARRAY['通常','遅刻','早退','残業','遅刻・早退','遅刻・残業','設定エラー','欠勤'])
     ),
     CONSTRAINT check_work_hours CHECK (work_hours >= 0 AND work_hours <= 24),
     CONSTRAINT check_clock_times CHECK (
