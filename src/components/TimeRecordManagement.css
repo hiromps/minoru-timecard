@@ -869,6 +869,42 @@
   background: rgba(59, 130, 246, 0.1);
 }
 
+/* 欠勤登録トグル。.form-group input が type を問わず width:100%/padding/border を
+   与えるため、チェックボックスに何も上書きしないと巨大な四角いボックスとして
+   描画されてしまう（レスポンシブでも崩れる主因だった）。checkbox はここで明示的に
+   元のサイズへ戻す。 */
+.form-group input[type="checkbox"] {
+  width: auto;
+  min-width: 0;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+  background: transparent;
+  accent-color: #3b82f6;
+  transform: scale(1.2);
+  cursor: pointer;
+}
+
+.absence-toggle-group {
+  padding: 12px;
+  background: #f0f4ff;
+  border: 2px solid #c7d2fe;
+  border-radius: 12px;
+}
+
+/* .form-group label { display: block; ... } より確実に優先させるため
+   2クラスの結合セレクタにする（要素セレクタ込みの詳細度に負けないように）。 */
+.absence-toggle-group .absence-toggle-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 0;
+  font-weight: 500;
+  color: #4c51bf;
+  cursor: pointer;
+}
+
 /* 時刻入力グループ */
 .time-input-group {
   display: flex;

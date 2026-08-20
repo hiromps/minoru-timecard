@@ -162,8 +162,8 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
             />
           </div>
 
-          <div className="form-group">
-            <label style={{ display: 'flex', alignItems: 'center' }}>
+          <div className="form-group absence-toggle-group">
+            <label className="absence-toggle-label">
               <input
                 type="checkbox"
                 checked={formData.isAbsence}
@@ -173,7 +173,6 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
                   clock_in_time: '',
                   clock_out_time: ''
                 }))}
-                style={{ marginRight: '8px' }}
               />
               欠勤として登録（出勤・退勤なし）
             </label>
