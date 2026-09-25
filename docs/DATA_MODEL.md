@@ -222,6 +222,7 @@ Supabase Auth（`auth.users`）と連携する管理者情報。`id` = `auth.uid
 | `設定エラー` | 出勤なしで退勤あり／所定終業 ≤ 所定始業（マスタ設定ミス・夜勤非対応）／退勤 ≤ 出勤（負の勤務時間） |
 | `欠勤` | 管理者が手動登録（`correctToAbsence`）。出勤・退勤とも`null`、`work_hours=0`。無給扱い（0009で追加） |
 | `有給` | 管理者が手動登録（`correctToPaidLeave`）。出勤・退勤とも`null`だが、`work_hours`に所定労働時間（`getScheduledWorkHours`）を保存し給与計算に算入する（0012で追加） |
+| `半日休暇` | 管理者が手動登録（`correctToHalfDayLeave`）。出勤・退勤は実打刻のまま、`work_hours`は実勤務時間。休んだ時間帯を時間休として`paid_leave_minutes`に保存（①午前休 9:00〜12:00=180分 / ②午後休 13:00〜17:00=240分）。遅刻・早退・残業の判定は行わない（0014で追加） |
 
 補足ロジック（`workTimeUtils.ts`）:
 - **労働時間の起点は所定始業に統一**: 始業前に出勤しても、その分は `work_hours` に計上しない（例: 所定9:00に対し8:55出勤でも9:00起点で計算）。遅刻判定（実際の出勤時刻 > 所定始業）はこの統一の影響を受けない。残業（退勤 − 所定終業）ももともと所定終業基準のため影響を受けない。
@@ -235,7 +236,9 @@ Supabase Auth（`auth.users`）と連携する管理者情報。`id` = `auth.uid
   - `hourly`（アルバイト）: `overtime_minutes`は常に0。所定終業を60分超えたら`time_records.is_extended_hours`のみ立てる（給与計算には影響しない）。
   - `executive`（役員、0011で追加）: `overtime_minutes`は常に0。`hourly`と異なり`is_extended_hours`の記録は行わない。
   - 実装は `src/utils/workTimeUtils.ts` の `calculateWorkTimeAndStatus`（`overtimeRuleType`引数）に一本化。
+- **半日休暇の除外（`recalculateAllStatus`）**: `半日休暇`は管理者が明示的に付けたステータスのため再計算の対象外（再計算すると`早退`等に戻るため）。`updateTimeRecord`（既存記録を更新）で自動判定に戻す場合は`paid_leave_minutes`を0にリセットする。
 - **欠勤・有給の除外（`recalculateAllStatus`）**: `status`が`欠勤`または`有給`の記録は出勤・退勤とも`null`のため、通常の再計算ロジックに通すと`通常`・`work_hours=0`に上書きされてしまう。再計算の対象外として扱う。
+- **給与計算（半日休暇）**: `半日休暇`は`work_hours + paid_leave_minutes`を`totalWorkHours`に算入し、`halfDayLeaveDays`・`paidLeaveMinutes`として出力する。ステータスに「早退」を含まないため早退回数には数えない。
 - **給与計算（`src/utils/payrollUtils.ts` の `validatePayroll`）**: `欠勤`は`work_hours`を集計に含めない（無給）。`有給`は`work_hours`（所定労働時間）を`totalWorkHours`に算入する（有給でも給与が発生するため）。社員別集計に`paidLeaveDays`として日数も出力する。
 
 > 集計での使い方（`getMonthlySummary`）: 遅刻回数は `status` に `'遅刻'` を含む行数、早退回数は `'早退'` を含む行数でカウント（複合ステータスも計上される）。

@@ -23,6 +23,10 @@
 --     残業代は計上しない。hourly と異なり長時間勤務フラグの記録も行わない。
 --   * time_records_status_check に '有給'（有給休暇。欠勤と異なり給与計算に算入する）を追加（0012）。
 --
+-- 2026-09-25 に本番へ適用済み 0014（半日休暇）:
+--   * time_records_status_check に '半日休暇' を追加し、time_records.paid_leave_minutes（時間休・分）を追加。
+--     午前休 9:00〜12:00=180分 / 午後休 13:00〜17:00=240分。work_hours は実勤務のまま。
+--
 -- 注意:
 --   * (employee_id, record_date) の UNIQUE 制約は無い（1日1レコードはアプリ側で担保）。
 -- =============================================================================
@@ -68,9 +72,11 @@ CREATE TABLE IF NOT EXISTS public.time_records (
     overtime_minutes integer NOT NULL DEFAULT 0,          -- 残業（分）= 退勤 - 所定終業、0以上（残業ルール区分により調整後）
     is_direct_work   boolean NOT NULL DEFAULT false,      -- 直行・直帰（遅刻/早退/残業判定を無効化）
     is_extended_hours boolean NOT NULL DEFAULT false,     -- アルバイト(hourly)の長時間勤務フラグ。残業代とは無関係
+    paid_leave_minutes integer NOT NULL DEFAULT 0,        -- 半日休暇の時間休（分）。給与計算で work_hours に加算
     CONSTRAINT time_records_status_check CHECK (
-        status = ANY (ARRAY['通常','遅刻','早退','残業','遅刻・早退','遅刻・残業','設定エラー','欠勤','有給'])
+        status = ANY (ARRAY['通常','遅刻','早退','残業','遅刻・早退','遅刻・残業','設定エラー','欠勤','有給','半日休暇'])
     ),
+    CONSTRAINT time_records_paid_leave_minutes_check CHECK (paid_leave_minutes >= 0 AND paid_leave_minutes <= 480),
     CONSTRAINT check_work_hours CHECK (work_hours >= 0 AND work_hours <= 24),
     CONSTRAINT check_clock_times CHECK (
         clock_out_time IS NULL OR clock_in_time IS NULL OR clock_out_time > clock_in_time

@@ -76,6 +76,30 @@ export const getScheduledWorkHours = (
 };
 
 /**
+ * 半日休暇の区分。時間休として給与計算に算入する時間帯は固定の2区分のみ。
+ * - am: ①午前休 9:00〜12:00（180分）
+ * - pm: ②午後休 13:00〜17:00（240分）
+ */
+export type HalfDayLeaveType = 'am' | 'pm';
+
+export const HALF_DAY_LEAVE_MINUTES: Record<HalfDayLeaveType, number> = {
+  am: 180,
+  pm: 240,
+};
+
+export const HALF_DAY_LEAVE_LABELS: Record<HalfDayLeaveType, string> = {
+  am: '①午前休 9:00〜12:00',
+  pm: '②午後休 13:00〜17:00',
+};
+
+/** 保存済みの時間休（分）から半日休暇の区分を逆引きする。該当なしは null。 */
+export const halfDayLeaveTypeFromMinutes = (minutes: number | null | undefined): HalfDayLeaveType | null => {
+  if (minutes === HALF_DAY_LEAVE_MINUTES.am) return 'am';
+  if (minutes === HALF_DAY_LEAVE_MINUTES.pm) return 'pm';
+  return null;
+};
+
+/**
  * 勤務時間とステータスを計算（打刻・修正・再計算・集計の単一の信頼できる計算関数）
  *
  * 重要（タイムゾーン）:
