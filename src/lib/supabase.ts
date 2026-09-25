@@ -138,6 +138,7 @@ export type TimeRecordStatus =
   | '設定エラー'
   | '欠勤'
   | '有給'
+  | '半日休暇'
 
 export interface TimeRecord {
   id: number
@@ -152,6 +153,8 @@ export interface TimeRecord {
   is_direct_work?: boolean
   /** アルバイト(hourly)が所定終業を大きく超えて勤務した場合の長時間勤務フラグ。残業代とは無関係。 */
   is_extended_hours?: boolean
+  /** 半日休暇の時間休（分）。午前休=180 / 午後休=240。給与計算で work_hours に加算する。 */
+  paid_leave_minutes?: number
   created_at: string
   updated_at: string
 }

@@ -1,5 +1,5 @@
 import { supabase, isDevMode } from './supabase';
-import { calculateWorkTimeAndStatus, applyDirectWorkOverride, getScheduledWorkHours } from '../utils/workTimeUtils';
+import { calculateWorkTimeAndStatus, applyDirectWorkOverride, getScheduledWorkHours, HalfDayLeaveType, HALF_DAY_LEAVE_MINUTES } from '../utils/workTimeUtils';
 import { getJSTMonthRange, localDateTimeToISO } from '../utils/dateUtils';
 import { demoTimeRecordService, demoEmployeeService } from './demoDatabase';
 
@@ -15,6 +15,8 @@ export interface TimeRecordWithEmployee {
   status: string;
   is_direct_work?: boolean;
   is_extended_hours?: boolean;
+  /** 半日休暇の時間休（分）。午前休=180 / 午後休=240。それ以外は0。 */
+  paid_leave_minutes?: number;
   is_manual_entry: boolean;
   approved_by?: string;
   created_at: string;
@@ -64,6 +66,7 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
           status,
           is_direct_work,
           is_extended_hours,
+          paid_leave_minutes,
           is_manual_entry,
           approved_by,
           created_at,
@@ -139,6 +142,7 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
         status: record.status,
         is_direct_work: record.is_direct_work ?? false,
         is_extended_hours: record.is_extended_hours ?? false,
+        paid_leave_minutes: record.paid_leave_minutes ?? 0,
         is_manual_entry: record.is_manual_entry ?? false,
         approved_by: record.approved_by,
         created_at: record.created_at,
@@ -345,6 +349,93 @@ export const correctToPaidLeave = async (
   }
 };
 
+// 半日休暇として登録（管理者用）。実際の出勤・退勤（時間的には早退／遅刻）はそのまま残し、
+// work_hours は実勤務時間、休んだ時間帯は時間休として paid_leave_minutes に保存する
+// （①午前休 9:00〜12:00=180分 / ②午後休 13:00〜17:00=240分）。
+// 給与計算は work_hours + paid_leave_minutes を算入する。ステータスは '半日休暇' 固定で、
+// 遅刻・早退・残業の判定は行わない（recalculateAllStatus の対象外）。
+export const correctToHalfDayLeave = async (
+  employee_id: string,
+  record_date: string,
+  halfDayLeave: HalfDayLeaveType,
+  clock_in_time: string,
+  clock_out_time: string,
+  reason: string
+): Promise<void> => {
+  try {
+    if (!clock_in_time || !clock_out_time) {
+      throw new Error('半日休暇は出勤・退勤の両方の時刻が必要です');
+    }
+    // datetime-local（JSTとして入力された時刻）をUTCのISO形式に変換
+    const formattedClockIn = localDateTimeToISO(clock_in_time);
+    const formattedClockOut = localDateTimeToISO(clock_out_time);
+
+    const { data: employeeData, error: employeeError } = await supabase
+      .from('employees')
+      .select('work_start_time, work_end_time, overtime_rule_type')
+      .eq('employee_id', employee_id)
+      .single();
+
+    if (employeeError) {
+      console.error('Error fetching employee work times:', employeeError);
+      throw new Error('社員の勤務時間情報の取得に失敗しました');
+    }
+
+    // 実勤務時間・残業は正典の計算関数で求める（所定始業起点・昼休憩控除・残業ルール区分）。
+    // ステータスは使わない（'半日休暇' 固定）。午前休で所定終業を超えて働いた場合の残業は計上する。
+    const workTimeResult = calculateWorkTimeAndStatus(
+      formattedClockIn,
+      formattedClockOut,
+      employeeData.work_start_time,
+      employeeData.work_end_time,
+      record_date,
+      employeeData.overtime_rule_type
+    );
+    if (workTimeResult.status === '設定エラー') {
+      throw new Error('出勤・退勤時刻または社員の所定時刻が不正です');
+    }
+
+    const paid_leave_minutes = HALF_DAY_LEAVE_MINUTES[halfDayLeave];
+
+    const { data: newRecord, error: rpcError } = await supabase.rpc('correct_time_record', {
+      p_employee_id: employee_id,
+      p_record_date: record_date,
+      p_clock_in_time: formattedClockIn,
+      p_clock_out_time: formattedClockOut,
+      p_work_hours: workTimeResult.actualWorkHours,
+      p_overtime_minutes: workTimeResult.overtimeMinutes,
+      p_status: '半日休暇',
+      p_is_direct_work: false
+    });
+
+    if (rpcError) {
+      console.error('Error registering half-day leave (RPC):', rpcError);
+      throw new Error('半日休暇の登録に失敗しました: ' + rpcError.message);
+    }
+
+    // RPC は paid_leave_minutes / is_extended_hours 列を未対応のため、作成後に別更新で反映する。
+    // 失敗すると時間休が給与に算入されないため中断する。
+    const newId = (newRecord as any)?.id;
+    if (!newId) {
+      throw new Error('半日休暇の登録結果を確認できませんでした（時間休が未反映の可能性）');
+    }
+    const { error: leaveError } = await supabase
+      .from('time_records')
+      .update({ paid_leave_minutes, is_extended_hours: workTimeResult.isExtendedHours })
+      .eq('id', newId);
+    if (leaveError) {
+      console.error('Error setting paid_leave_minutes:', leaveError);
+      throw new Error('時間休の保存に失敗しました: ' + leaveError.message);
+    }
+
+    await logCorrectionAction(employee_id, record_date, 'UPDATE', reason, newId);
+
+  } catch (error) {
+    console.error('Error in correctToHalfDayLeave:', error);
+    throw error;
+  }
+};
+
 // 打刻記録を更新
 export const updateTimeRecord = async (
   employee_id: string,
@@ -418,6 +509,8 @@ export const updateTimeRecord = async (
         overtime_minutes,
         status,
         is_extended_hours,
+        // 自動判定のステータスに戻すため、半日休暇の時間休は解除する
+        paid_leave_minutes: 0,
         updated_at: new Date().toISOString()
       })
       .eq('employee_id', employee_id)
@@ -584,7 +677,8 @@ export const recalculateAllStatus = async (options?: {
 
       // 欠勤・有給は打刻由来の記録ではない（出勤・退勤とも null）ため、
       // 通常の再計算ロジックに通すと「通常」・勤務時間0に上書きされてしまう。対象外にする。
-      if (record.status === '欠勤' || record.status === '有給') continue;
+      // 半日休暇は管理者が明示的に付けたステータスで、再計算すると「早退」等に戻るため対象外。
+      if (record.status === '欠勤' || record.status === '有給' || record.status === '半日休暇') continue;
 
       // 直行・直帰の記録は遅刻/早退/残業判定を無効化し「通常」扱い・残業0とする
       // （勤務時間は再計算値）。全経路で共通のヘルパーを用いて統一する。

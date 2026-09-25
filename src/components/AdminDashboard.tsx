@@ -266,6 +266,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
                               <th>未退勤</th>
                               <th>欠勤</th>
                               <th>有給</th>
+                              <th>半日休暇</th>
                               <th>合計勤務</th>
                               <th>残業</th>
                               <th>不備</th>
@@ -279,6 +280,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ admin, onLogout }) => {
                                 <td>{t.openDays > 0 ? `${t.openDays}日` : '-'}</td>
                                 <td>{t.absenceDays > 0 ? `${t.absenceDays}日` : '-'}</td>
                                 <td>{t.paidLeaveDays > 0 ? `${t.paidLeaveDays}日` : '-'}</td>
+                                <td>{t.halfDayLeaveDays > 0 ? `${t.halfDayLeaveDays}日（${formatMinutesForCSV(t.paidLeaveMinutes)}）` : '-'}</td>
                                 <td>{formatWorkHoursForCSV(t.totalWorkHours)}</td>
                                 <td>{formatMinutesForCSV(t.totalOvertimeMinutes)}</td>
                                 <td>{t.issueCount > 0 ? `${t.issueCount}件` : '-'}</td>

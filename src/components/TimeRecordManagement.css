@@ -553,6 +553,23 @@
   margin-left: 6px;
 }
 
+.status.半日休暇 {
+  background: #0d9488;
+  color: white;
+  border-color: #0f766e;
+}
+
+.status.半日休暇::after {
+  content: '🌗';
+  margin-left: 6px;
+}
+
+.paid-leave-note {
+  font-size: 12px;
+  color: #0f766e;
+  margin-top: 2px;
+}
+
 /* バッジ */
 .manual-badge,
 .auto-badge {

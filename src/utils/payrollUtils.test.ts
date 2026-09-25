@@ -132,6 +132,32 @@ describe('validatePayroll（不備検出）', () => {
     expect(t.totalWorkHours).toBe(7);
   });
 
+  it('半日休暇は実勤務時間＋時間休を合計勤務に算入し、早退回数には数えない', () => {
+    // 2026-09-16 西辻さんのケース: 8:56〜13:06（実勤務3.10h）＋ ②午後休 13:00〜17:00（240分）
+    const report = validatePayroll(
+      [
+        rec({
+          status: '半日休暇',
+          clock_in_time: '2026-07-01T00:00:00.000Z', // JST 09:00
+          clock_out_time: '2026-07-01T04:06:00.000Z', // JST 13:06
+          work_hours: 3.1,
+          paid_leave_minutes: 240,
+        }),
+      ],
+      [{ employee_id: '001', name: '田中太郎' }],
+      period
+    );
+    expect(report.errorCount).toBe(0);
+    expect(report.warningCount).toBe(0);
+    const t = report.employeeTotals.find((x) => x.employee_id === '001')!;
+    expect(t.workDays).toBe(1);
+    expect(t.halfDayLeaveDays).toBe(1);
+    expect(t.paidLeaveMinutes).toBe(240);
+    expect(t.totalWorkHours).toBe(7.1);
+    expect(t.earlyLeaveCount).toBe(0);
+    expect(buildPayrollCSV(report)).toContain('半日休暇（時間休');
+  });
+
   it('出勤打刻なしをエラー検出', () => {
     const report = validatePayroll(
       [rec({ clock_in_time: null })],

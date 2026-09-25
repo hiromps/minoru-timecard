@@ -134,7 +134,11 @@ export interface EmployeeTotal {
   absenceDays: number;
   /** 有給（ステータスが「有給」）の日数。totalWorkHoursに所定労働時間分を算入済み */
   paidLeaveDays: number;
-  /** 合計勤務時間（時, 小数）。有給の所定労働時間分を含む */
+  /** 半日休暇（ステータスが「半日休暇」）の日数 */
+  halfDayLeaveDays: number;
+  /** 半日休暇の時間休の合計（分）。totalWorkHoursに算入済み */
+  paidLeaveMinutes: number;
+  /** 合計勤務時間（時, 小数）。有給の所定労働時間分・半日休暇の時間休分を含む */
   totalWorkHours: number;
   /** 合計残業（分） */
   totalOvertimeMinutes: number;
@@ -199,6 +203,8 @@ export const validatePayroll = (
         openDays: 0,
         absenceDays: 0,
         paidLeaveDays: 0,
+        halfDayLeaveDays: 0,
+        paidLeaveMinutes: 0,
         totalWorkHours: 0,
         totalOvertimeMinutes: 0,
         lateCount: 0,
@@ -272,9 +278,15 @@ export const validatePayroll = (
     // --- 集計 ---
     if (!isDuplicateExtra && hasIn && hasOut) {
       t.workDays += 1;
+      // 半日休暇は実勤務時間に加え、休んだ時間帯（時間休）を給与計算に算入する
+      const leaveMinutes = record.status === '半日休暇' ? record.paid_leave_minutes || 0 : 0;
+      if (record.status === '半日休暇') {
+        t.halfDayLeaveDays += 1;
+        t.paidLeaveMinutes += leaveMinutes;
+      }
       totalMinutesMap.set(
         record.employee_id,
-        (totalMinutesMap.get(record.employee_id) || 0) + Math.round(workHours * 60)
+        (totalMinutesMap.get(record.employee_id) || 0) + Math.round(workHours * 60) + leaveMinutes
       );
     } else if (hasIn && !hasOut) {
       t.openDays += 1;
@@ -390,7 +402,9 @@ export const buildPayrollCSV = (report: PayrollReport): string => {
         decimalHours(record.work_hours || 0),
         formatMinutesForCSV(record.overtime_minutes || 0),
         record.overtime_minutes || 0,
-        record.status,
+        record.status === '半日休暇'
+          ? `半日休暇（時間休${formatMinutesForCSV(record.paid_leave_minutes || 0)}）`
+          : record.status,
         record.is_direct_work ? '直行直帰' : '',
         record.is_manual_entry ? '手動' : '',
         issues.join(' / '),
@@ -404,7 +418,7 @@ export const buildPayrollCSV = (report: PayrollReport): string => {
   lines.push('【社員別集計】');
   lines.push(
     csvRow([
-      '社員ID', '社員名', '勤務日数', '未退勤', '欠勤', '有給',
+      '社員ID', '社員名', '勤務日数', '未退勤', '欠勤', '有給', '半日休暇', '時間休',
       '合計勤務時間', '合計勤務時間(時)', '合計残業', '合計残業(分)',
       '遅刻', '早退', '不備件数',
     ])
@@ -418,6 +432,8 @@ export const buildPayrollCSV = (report: PayrollReport): string => {
         t.openDays,
         t.absenceDays,
         t.paidLeaveDays,
+        t.halfDayLeaveDays,
+        formatMinutesForCSV(t.paidLeaveMinutes),
         formatWorkHoursForCSV(t.totalWorkHours),
         decimalHours(t.totalWorkHours),
         formatMinutesForCSV(t.totalOvertimeMinutes),

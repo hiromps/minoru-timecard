@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from 'react';
 import './TimeRecordManagement.css';
-import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, correctToAbsence, correctToPaidLeave, updateTimeRecord, getEmployees, TimeRecordWithEmployee, deleteTimeRecord, recalculateAllStatus } from '../lib/adminSupabase';
+import { getAllTimeRecords, correctTimeRecordByDeleteAndCreate, correctToAbsence, correctToPaidLeave, correctToHalfDayLeave, updateTimeRecord, getEmployees, TimeRecordWithEmployee, deleteTimeRecord, recalculateAllStatus } from '../lib/adminSupabase';
 import { Employee, TimeRecordStatus } from '../lib/supabase';
 import { formatWorkHours } from '../utils/timeUtils';
 import { minutesToHoursDisplay } from '../utils/overtimeCalculator';
 import { getJSTDateTimeLocal, getJSTMonthRange } from '../utils/dateUtils';
+import { HalfDayLeaveType, HALF_DAY_LEAVE_LABELS, halfDayLeaveTypeFromMinutes } from '../utils/workTimeUtils';
 
 // TimeRecordWithEmployeeを使用するため、ローカル定義は削除
 
 const STATUS_OPTIONS: TimeRecordStatus[] = [
-  '通常', '遅刻', '早退', '残業', '遅刻・早退', '遅刻・残業', '設定エラー', '欠勤', '有給'
+  '通常', '遅刻', '早退', '残業', '遅刻・早退', '遅刻・残業', '設定エラー', '欠勤', '有給', '半日休暇'
 ];
 
 interface CorrectionModalProps {
@@ -21,8 +22,14 @@ interface CorrectionModalProps {
   loading: boolean;
 }
 
-/** 特別ステータス。'none' は出勤・退勤時刻から自動判定（通常/遅刻/早退/残業等）。 */
-type SpecialStatus = 'none' | '欠勤' | '有給';
+/**
+ * 特別ステータス。'none' は出勤・退勤時刻から自動判定（通常/遅刻/早退/残業等）。
+ * '半日休暇' は出勤・退勤を持ったまま、休んだ時間帯（halfDayLeave）を時間休として給与に算入する。
+ */
+type SpecialStatus = 'none' | '欠勤' | '有給' | '半日休暇';
+
+/** 出勤・退勤時刻の入力を持つステータスか（欠勤・有給は打刻なし） */
+const hasClockTimes = (s: SpecialStatus) => s === 'none' || s === '半日休暇';
 
 interface CorrectionData {
   employee_id: string;
@@ -32,6 +39,8 @@ interface CorrectionData {
   reason: string;
   action: 'update' | 'delete_and_create';
   specialStatus: SpecialStatus;
+  /** specialStatus が '半日休暇' のときの時間休の区分（①午前休 / ②午後休） */
+  halfDayLeave: HalfDayLeaveType;
 }
 
 const CorrectionModal: React.FC<CorrectionModalProps> = ({
@@ -49,7 +58,8 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
     clock_out_time: '',
     reason: '',
     action: 'update',
-    specialStatus: 'none'
+    specialStatus: 'none',
+    halfDayLeave: 'pm'
   });
   const isNewRecord = !record;
 
@@ -86,7 +96,11 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
         clock_out_time: getJSTDateTimeLocal(record.clock_out_time),
         reason: '管理者による時刻修正',
         action: 'update',
-        specialStatus: record.status === '欠勤' || record.status === '有給' ? record.status : 'none'
+        specialStatus:
+          record.status === '欠勤' || record.status === '有給' || record.status === '半日休暇'
+            ? record.status
+            : 'none',
+        halfDayLeave: halfDayLeaveTypeFromMinutes(record.paid_leave_minutes) ?? 'pm'
       });
     } else {
       // 新規追加: 記録が無い社員・日付を後から追加するためのブランクな状態
@@ -97,7 +111,8 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
         clock_out_time: '',
         reason: '',
         action: 'delete_and_create',
-        specialStatus: 'none'
+        specialStatus: 'none',
+        halfDayLeave: 'pm'
       });
     }
   }, [record, isOpen]);
@@ -110,7 +125,7 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
     // 特に「削除→作成」経路は非トランザクションのため、INSERT が制約違反で
     // 失敗するとその日の記録が消失する。事前に弾くことでデータ消失を防止する。
     // 欠勤・有給の登録は出勤・退勤を持たないため、この検証自体が対象外。
-    if (formData.specialStatus === 'none' && formData.clock_in_time && formData.clock_out_time) {
+    if (hasClockTimes(formData.specialStatus) && formData.clock_in_time && formData.clock_out_time) {
       // datetime-local 文字列同士の比較（同一基準で解釈されるため相対比較は安全）
       const cin = new Date(formData.clock_in_time).getTime();
       const cout = new Date(formData.clock_out_time).getTime();
@@ -173,20 +188,45 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
             <label>ステータス:</label>
             <select
               value={formData.specialStatus}
-              onChange={(e) => setFormData(prev => ({
-                ...prev,
-                specialStatus: e.target.value as SpecialStatus,
-                clock_in_time: '',
-                clock_out_time: ''
-              }))}
+              onChange={(e) => {
+                const next = e.target.value as SpecialStatus;
+                // 欠勤・有給は打刻を持たないため時刻をクリアする。
+                // 通常⇔半日休暇の切替では入力済みの出勤・退勤を引き継ぐ。
+                setFormData(prev => ({
+                  ...prev,
+                  specialStatus: next,
+                  clock_in_time: hasClockTimes(next) ? prev.clock_in_time : '',
+                  clock_out_time: hasClockTimes(next) ? prev.clock_out_time : ''
+                }));
+              }}
             >
               <option value="none">通常（出勤・退勤時刻から自動判定）</option>
               <option value="欠勤">欠勤として登録（出勤・退勤なし・無給）</option>
               <option value="有給">有給として登録（出勤・退勤なし・所定時間分を給与に算入）</option>
+              <option value="半日休暇">半日休暇として登録（実勤務＋休んだ時間帯を時間休として給与に算入）</option>
             </select>
           </div>
 
-          {formData.specialStatus === 'none' && (
+          {formData.specialStatus === '半日休暇' && (
+            <div className="form-group">
+              <label>時間休の区分:</label>
+              <div className="radio-group">
+                {(Object.keys(HALF_DAY_LEAVE_LABELS) as HalfDayLeaveType[]).map(type => (
+                  <label key={type}>
+                    <input
+                      type="radio"
+                      value={type}
+                      checked={formData.halfDayLeave === type}
+                      onChange={() => setFormData(prev => ({ ...prev, halfDayLeave: type }))}
+                    />
+                    {HALF_DAY_LEAVE_LABELS[type]}
+                  </label>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {hasClockTimes(formData.specialStatus) && (
             <div className="form-row">
               <div className="form-group">
                 <label>出勤時刻:</label>
@@ -208,6 +248,7 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
                     value={formData.clock_out_time}
                     onChange={(e) => setFormData(prev => ({ ...prev, clock_out_time: e.target.value }))}
                     placeholder="未退勤の場合は空のままにしてください"
+                    required={formData.specialStatus === '半日休暇'}
                   />
                   <button
                     type="button"
@@ -367,6 +408,16 @@ const TimeRecordManagement: React.FC = () => {
       } else if (data.specialStatus === '有給') {
         // 有給として登録（出勤・退勤なし・所定時間分を給与に算入）
         await correctToPaidLeave(data.employee_id, data.record_date, data.reason);
+      } else if (data.specialStatus === '半日休暇') {
+        // 半日休暇として登録（実勤務＋時間休を給与に算入）
+        await correctToHalfDayLeave(
+          data.employee_id,
+          data.record_date,
+          data.halfDayLeave,
+          data.clock_in_time,
+          data.clock_out_time,
+          data.reason
+        );
       } else if (data.action === 'delete_and_create') {
         // 削除してから再作成
         await correctTimeRecordByDeleteAndCreate(
@@ -551,7 +602,14 @@ const TimeRecordManagement: React.FC = () => {
                 <td data-label="日付">{record.record_date}</td>
                 <td data-label="出勤">{formatTime(record.clock_in_time)}</td>
                 <td data-label="退勤">{formatTime(record.clock_out_time)}</td>
-                <td data-label="勤務時間">{formatWorkHours(record.work_hours)}</td>
+                <td data-label="勤務時間">
+                  {formatWorkHours(record.work_hours)}
+                  {record.status === '半日休暇' && (record.paid_leave_minutes || 0) > 0 && (
+                    <div className="paid-leave-note">
+                      ＋時間休 {minutesToHoursDisplay(record.paid_leave_minutes || 0)}
+                    </div>
+                  )}
+                </td>
                 <td data-label="残業時間">{minutesToHoursDisplay(record.overtime_minutes || 0)}</td>
                 <td data-label="ステータス">
                   <span className={`status ${record.status}`}>
