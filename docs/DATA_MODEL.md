@@ -207,6 +207,23 @@ Supabase Auth（`auth.users`）と連携する管理者情報。`id` = `auth.uid
 
 ---
 
+## 6. `company_holidays`（会社休日カレンダー）
+
+総務の年間会社カレンダー（`2026ミノル化学カレンダー.xlsx` 等）に基づく**平日（月〜金）の休日**。土日は常に休日としてコード側で判定するため登録しない（0015で追加）。
+
+| カラム | 型 | NULL | 既定値 | 説明 |
+|--------|-----|------|--------|------|
+| `holiday_date` | date | NOT NULL | — | 主キー。休日の日付 |
+| `name` | text | NOT NULL | — | 名称（例: 元日、夏季休暇） |
+| `kind` | text | NOT NULL | — | `national`（国民の祝日）/ `company`（年末年始・夏季休暇など会社独自）/ `planned_leave`（計画有給） |
+| `created_at` | timestamptz | NOT NULL | `now()` | 作成日時 |
+
+- **RLS**: 公開読み取り（`public_company_holidays_read`）/ 書き込みは有効な管理者のみ（`admin_company_holidays_write`）。
+- **利用箇所**: Edge Function `payroll-check-notify` の「出勤日の打刻漏れ」検出で、土日に加えて本テーブルの日付を除外する。
+- **登録済み**: 2026年分 24日（土日 104日 + 24日 = 休日 128日 / 出勤日 237日。カレンダー記載値と一致）。翌年分はカレンダー確定後に追加する。
+
+---
+
 ## ステータス列挙と判定ロジック
 
 `status` 列の取り得る値（`src/lib/supabase.ts` の `TimeRecordStatus` 型、`src/utils/workTimeUtils.ts` が算出）。

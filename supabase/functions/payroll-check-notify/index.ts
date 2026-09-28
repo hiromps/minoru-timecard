@@ -1,4 +1,4 @@
-// 25日締め給与データの不備（設定エラー／未退勤／平日の打刻漏れ）を検知し、
+// 25日締め給与データの不備（設定エラー／未退勤／出勤日の打刻漏れ）を検知し、
 // 管理者へメール通知する。pg_cron から毎月26日07:00 JSTに呼び出される想定。
 // 業務ロジックは src/utils/payrollUtils.ts の validatePayroll に準拠（Deno環境のため個別実装）。
 
@@ -75,8 +75,9 @@ const getClosingPeriod = (): { startDate: string; endDate: string; label: string
   return { startDate, endDate, label }
 }
 
-// [startDate, endDate] の平日（月〜金）の日付一覧（タイムゾーン非依存）
-const listWeekdays = (startDate: string, endDate: string): string[] => {
+// [startDate, endDate] の出勤日（月〜金のうち会社休日を除く）の日付一覧（タイムゾーン非依存）
+// 会社休日は company_holidays テーブル（平日の祝日・年末年始・夏季休暇など）から渡す
+const listWorkdays = (startDate: string, endDate: string, holidays: Set<string>): string[] => {
   const [sy, sm, sd] = startDate.split('-').map(Number)
   const [ey, em, ed] = endDate.split('-').map(Number)
   const start = Date.UTC(sy, sm - 1, sd)
@@ -85,8 +86,9 @@ const listWeekdays = (startDate: string, endDate: string): string[] => {
   for (let t = start; t <= end; t += 24 * 60 * 60 * 1000) {
     const d = new Date(t)
     const wd = d.getUTCDay()
-    if (wd >= 1 && wd <= 5) {
-      days.push(`${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`)
+    const date = `${d.getUTCFullYear()}-${pad2(d.getUTCMonth() + 1)}-${pad2(d.getUTCDate())}`
+    if (wd >= 1 && wd <= 5 && !holidays.has(date)) {
+      days.push(date)
     }
   }
   return days
@@ -95,7 +97,8 @@ const listWeekdays = (startDate: string, endDate: string): string[] => {
 const buildIssues = (
   employees: EmployeeRow[],
   records: TimeRecordRow[],
-  period: { startDate: string; endDate: string }
+  period: { startDate: string; endDate: string },
+  holidays: Set<string>
 ): Issue[] => {
   const issues: Issue[] = []
   const nameMap = new Map(employees.map((e) => [e.employee_id, e.name]))
@@ -126,17 +129,17 @@ const buildIssues = (
     }
   }
 
-  // 平日の打刻漏れ（在籍中の社員のみ対象。土日は対象外）
-  const weekdays = listWeekdays(period.startDate, period.endDate)
+  // 出勤日の打刻漏れ（在籍中の社員のみ対象。土日・会社休日は対象外）
+  const workdays = listWorkdays(period.startDate, period.endDate, holidays)
   for (const employeeId of activeIds) {
     const name = nameMap.get(employeeId) || employeeId
-    for (const date of weekdays) {
+    for (const date of workdays) {
       if (!recordedDayKeys.has(`${employeeId}__${date}`)) {
         issues.push({
           employee_id: employeeId,
           employee_name: name,
           date,
-          message: '打刻記録がありません（平日）',
+          message: '打刻記録がありません（出勤日）',
         })
       }
     }
@@ -234,7 +237,15 @@ Deno.serve(async (req) => {
       if (page.length < TIME_RECORDS_PAGE_SIZE) break
     }
 
-    const issues = buildIssues(employees ?? [], records, period)
+    const { data: holidayRows, error: holidayError } = await supabase
+      .from('company_holidays')
+      .select('holiday_date')
+      .gte('holiday_date', period.startDate)
+      .lte('holiday_date', period.endDate)
+    if (holidayError) throw holidayError
+    const holidays = new Set((holidayRows ?? []).map((h: { holiday_date: string }) => h.holiday_date))
+
+    const issues = buildIssues(employees ?? [], records, period, holidays)
     const workSummary = buildWorkSummary(employees ?? [], records)
     const { subject, text, html } = buildEmailBody(period, issues, workSummary)
 
