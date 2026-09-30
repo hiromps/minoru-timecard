@@ -8,7 +8,8 @@ import { calculateWorkTimeAndStatus, applyDirectWorkOverride, getScheduledWorkHo
  * - workStartTime/workEndTime は「JSTの時刻」、recordDate は「JSTの日付」。
  * - 遅刻: 出勤 > record_date の JST 始業
  * - 早退: 退勤 < record_date の JST 終業
- * - 残業: 退勤 > record_date の JST 終業、残業分 = max(0, round((退勤 - 所定終業)/60000))
+ * - 打刻時刻（出勤・退勤）の秒以下は切り捨てて分単位で計算する
+ * - 残業: 退勤 > record_date の JST 終業、残業分 = max(0, (退勤 - 所定終業) の分数)
  * - 労働時間: 実打刻ベース (退勤 - 出勤)
  *
  * 重要: clock_in/out は必ず末尾Zの絶対時刻で渡し、所定時刻は recordDate(JST) で判定する。
@@ -17,7 +18,7 @@ import { calculateWorkTimeAndStatus, applyDirectWorkOverride, getScheduledWorkHo
  */
 describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
   describe('実データに基づくケース', () => {
-    it('大﨑香奈子: JST16:09退勤・所定09:00-16:00 → 残業10分', () => {
+    it('大﨑香奈子: JST16:09退勤・所定09:00-16:00 → 残業9分', () => {
       // clock_in は前日UTC(JST翌日08:53)、record_date は翌日 → 日付跨ぎでも正しく判定
       const r = calculateWorkTimeAndStatus(
         '2026-05-26T23:53:12.883Z', // JST 2026-05-27 08:53
@@ -27,7 +28,7 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
         '2026-05-27'
       );
       expect(r.status).toBe('残業');
-      expect(r.overtimeMinutes).toBe(10); // 9分33秒 → round = 10分
+      expect(r.overtimeMinutes).toBe(9); // 16:09:33 → 秒切り捨てで16:09 → 9分
     });
 
     it('押川新一: JST20:56退勤・所定09:00-17:00 → 残業236分', () => {
@@ -254,30 +255,77 @@ describe('calculateWorkTimeAndStatus（JST基準・TZ非依存）', () => {
     });
   });
 
-  describe('残業ステータスと残業分の整合（丸め境界）', () => {
-    it('所定終業+20秒（丸めで0分）は残業にならず通常', () => {
+  describe('打刻の秒は切り捨て（日本時間の分単位で計算）', () => {
+    // 打刻時刻は日本時間（+09:00）で記述
+    it('所定終業+20秒は切り捨てで0分 → 残業にならず通常', () => {
       const r = calculateWorkTimeAndStatus(
-        '2026-05-27T00:00:00.000Z', // JST 09:00
-        '2026-05-27T08:00:20.000Z', // JST 17:00:20（所定+20秒）
+        '2026-05-27T09:00:00+09:00',
+        '2026-05-27T17:00:20+09:00', // 所定+20秒
         '09:00:00',
         '17:00:00',
         '2026-05-27'
       );
-      // round(20秒)=0分 → 残業0、ステータスも残業にしない（矛盾レコード防止）
       expect(r.overtimeMinutes).toBe(0);
       expect(r.status).toBe('通常');
     });
 
-    it('所定終業+40秒（丸めで1分）は残業1分', () => {
+    it('所定終業+59秒も切り捨てで0分 → 残業にならず通常', () => {
       const r = calculateWorkTimeAndStatus(
-        '2026-05-27T00:00:00.000Z',
-        '2026-05-27T08:00:40.000Z', // JST 17:00:40
+        '2026-05-27T09:00:00+09:00',
+        '2026-05-27T17:00:59+09:00',
         '09:00:00',
         '17:00:00',
         '2026-05-27'
       );
-      expect(r.overtimeMinutes).toBe(1);
-      expect(r.status).toBe('残業');
+      expect(r.overtimeMinutes).toBe(0);
+      expect(r.status).toBe('通常');
+      expect(r.actualWorkHours).toBe(7);
+    });
+
+    it('17:01:00 と 17:01:59 の退勤は同じ 7時間1分・残業1分（実データ: 西原 晴美）', () => {
+      const a = calculateWorkTimeAndStatus(
+        '2026-08-28T08:56:00+09:00',
+        '2026-08-28T17:01:00+09:00',
+        '09:00:00',
+        '17:00:00',
+        '2026-08-28'
+      );
+      const b = calculateWorkTimeAndStatus(
+        '2026-08-24T08:53:30+09:00',
+        '2026-08-24T17:01:59+09:00',
+        '09:00:00',
+        '17:00:00',
+        '2026-08-24'
+      );
+      // 9:00起点・17:01退勤・休憩60分控除 → 421分 = 7時間1分
+      expect(Math.round(a.actualWorkHours * 60)).toBe(421);
+      expect(b.actualWorkHours).toBe(a.actualWorkHours);
+      expect(b.overtimeMinutes).toBe(1);
+      expect(b.status).toBe(a.status);
+    });
+
+    it('始業+30秒の出勤は切り捨てで始業ちょうど → 遅刻にならない', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T09:00:30+09:00',
+        '2026-05-27T17:00:00+09:00',
+        '09:00:00',
+        '17:00:00',
+        '2026-05-27'
+      );
+      expect(r.status).toBe('通常');
+      expect(r.actualWorkHours).toBe(7);
+    });
+
+    it('終業-30秒の退勤は切り捨てで16:59 → 早退', () => {
+      const r = calculateWorkTimeAndStatus(
+        '2026-05-27T09:00:00+09:00',
+        '2026-05-27T16:59:30+09:00',
+        '09:00:00',
+        '17:00:00',
+        '2026-05-27'
+      );
+      expect(r.status).toBe('早退');
+      expect(Math.round(r.actualWorkHours * 60)).toBe(419);
     });
   });
 
