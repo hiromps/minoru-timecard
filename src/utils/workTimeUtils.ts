@@ -3,7 +3,7 @@
  */
 
 import { TimeRecordStatus, OvertimeRuleType } from '../lib/supabase';
-import { localDateTimeToISO, getJSTDate } from './dateUtils';
+import { localDateTimeToISO, getJSTDate, getJSTDateTimeLocal } from './dateUtils';
 
 export interface WorkTimeResult {
   actualWorkHours: number;
@@ -21,6 +21,14 @@ export interface WorkTimeResult {
  * @returns "HH:MM" 形式の時刻文字列
  */
 const toHHMM = (timeStr: string): string => timeStr.split(':').slice(0, 2).join(':');
+
+/**
+ * 打刻時刻を日本時間（JST）の分単位に切り捨てる。
+ * JSTの "YYYY-MM-DDTHH:MM" に変換（秒以下を捨てる）してから絶対時刻へ戻す。
+ * 例: JST 17:01:40 → JST 17:01:00
+ */
+const truncateToJSTMinute = (isoString: string): Date =>
+  new Date(localDateTimeToISO(getJSTDateTimeLocal(isoString)));
 
 /** 所定昼休憩（JST 12:00〜13:00）。実勤務時間と重なった分のみ控除する。 */
 const BREAK_START_HHMM = '12:00';
@@ -142,8 +150,10 @@ export const calculateWorkTimeAndStatus = (
     return { actualWorkHours: 0, status: '通常', overtimeMinutes: 0, isExtendedHours: false };
   }
 
-  const clockIn = new Date(clockInTime);
-  const clockOut = clockOutTime ? new Date(clockOutTime) : null;
+  // 打刻時刻は日本時間の分単位に切り捨てて計算する（例: JST 17:01:40 退勤は 17:01 として扱う）。
+  // 秒を残すと表示上同じ 17:01 退勤でも労働時間が 7時間1分/7時間2分 とばらつくため。
+  const clockIn = truncateToJSTMinute(clockInTime);
+  const clockOut = clockOutTime ? truncateToJSTMinute(clockOutTime) : null;
 
   // 所定時刻が属するJST日付（引数優先、無ければ clockIn のJST日付）を基準に、
   // JSTの所定始業・終業を UTC絶対時刻へ変換する（タイムゾーン非依存）
