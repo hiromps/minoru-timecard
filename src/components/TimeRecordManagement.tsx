@@ -94,7 +94,7 @@ const CorrectionModal: React.FC<CorrectionModalProps> = ({
         record_date: record.record_date,
         clock_in_time: getJSTDateTimeLocal(record.clock_in_time),
         clock_out_time: getJSTDateTimeLocal(record.clock_out_time),
-        reason: '管理者による時刻修正',
+        reason: record.correction_reason ?? '管理者による時刻修正',
         action: 'update',
         specialStatus:
           record.status === '欠勤' || record.status === '有給' || record.status === '半日休暇'

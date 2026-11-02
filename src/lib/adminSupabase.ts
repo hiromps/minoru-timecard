@@ -114,10 +114,11 @@ export const getAllTimeRecords = async (): Promise<TimeRecordWithEmployee[]> => 
     const auditLogsMap = new Map();
     auditLogs?.forEach((log: any) => {
       const recordKey = log.record_id;
-      if (recordKey && log.new_values?.reason) {
+      const reason = log.new_values?.reason ?? log.reason;
+      if (recordKey && reason != null) {
         if (!auditLogsMap.has(recordKey) || new Date(log.created_at) > new Date(auditLogsMap.get(recordKey).created_at)) {
           auditLogsMap.set(recordKey, {
-            reason: log.new_values.reason,
+            reason,
             created_at: log.created_at,
             action: log.action
           });
@@ -559,33 +560,23 @@ export const logCorrectionAction = async (
       }
     };
 
-    // reason列が存在する場合のみ追加
-    try {
-      // まずreason列ありで試行
-      const { error: insertError } = await supabase
-        .from('audit_logs')
-        .insert({
-          ...logData,
-          reason
-        });
+    let { error } = await supabase
+      .from('audit_logs')
+      .insert({ ...logData, reason });
 
-      if (insertError) {
-        // reason列が存在しない場合、new_valuesに含めて再試行
-        if (insertError.message?.includes('reason') && insertError.message?.includes('does not exist')) {
-          console.log('reason列が存在しないため、new_valuesに含めて記録します');
-          await supabase
-            .from('audit_logs')
-            .insert(logData);
-        } else {
-          throw insertError;
-        }
-      }
-    } catch (retryError) {
-      console.error('Error logging correction action:', retryError);
-      // 監査ログの失敗は処理を停止させない
+    // reason列のない旧スキーマとPostgRESTのスキーマキャッシュにも対応する。
+    if (error?.message?.includes('reason') &&
+        (error.code === 'PGRST204' || error.code === '42703' || error.message.includes('does not exist'))) {
+      const result = await supabase.from('audit_logs').insert(logData);
+      error = result.error;
+    }
+
+    if (error) {
+      throw error;
     }
   } catch (error) {
     console.error('Error in logCorrectionAction:', error);
+    throw new Error('修正理由の保存に失敗しました。打刻記録は変更されている可能性があります。再度保存してください。');
   }
 };
 
@@ -758,7 +749,8 @@ export const getAuditLogs = async (): Promise<any[]> => {
       .from('audit_logs')
       .select('*')
       .eq('table_name', 'time_records')
-      .order('created_at', { ascending: false });
+      .order('created_at', { ascending: false })
+      .order('id', { ascending: false });
 
     if (error) {
       console.error('❌ Error fetching audit logs:', error);
