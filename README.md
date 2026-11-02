@@ -27,7 +27,7 @@
 - **データ層 / 認証**: Supabase (PostgreSQL + Auth + RLS)、`@supabase/supabase-js` ^2.56
 - **ルーティング**: react-router-dom 7
 - **ホスティング**: Vercel（静的 SPA 配信）。フォールバックとして Netlify (`public/_redirects`)
-- **ランタイム**: Node.js 20.x / npm 10.x
+- **ランタイム**: Node.js 24.x / npm 11.x
 
 > 旧構成（Express + SQLite のバックエンド）は廃止済みです。詳細は下記「レガシー」を参照してください。
 
